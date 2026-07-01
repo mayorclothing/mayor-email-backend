@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: mayor-email-backend
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: HUBSPOT_TOKEN
+        sync: false
+      - key: HUBSPOT_CLIENT_SECRET
+        sync: false
+      - key: HUBSPOT_ORDER_DEAL_STAGE
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: RESEND_REPLY_TO
+        sync: false
+      - key: BRAND_ACCENT_COLOR
+        value: "#1a1a1a"
+      - key: BRAND_NAME
+        value: Mayor Clothing
+      - key: BRAND_LOGO_URL
+        sync: false
