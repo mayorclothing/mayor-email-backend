@@ -41,7 +41,11 @@ router.post('/generate', requireInternalAuth, async (req, res, next) => {
 // (hourly) to hit this. Idempotency keeps it cheap alongside the webhook path.
 router.post('/poll', requireInternalAuth, async (_req, res, next) => {
   try {
-    assertConfigured(['hubspot.token']);
+    // Cron hits this hourly. Stay green (200 skipped) until HubSpot is wired up,
+    // so a red cron always means a real failure — not "not configured yet".
+    if (!config.hubspot.token) {
+      return res.status(200).json({ ok: true, skipped: 'hubspot not configured' });
+    }
     const counts = await runPoll();
     res.status(200).json({ ok: true, counts });
   } catch (error) {
