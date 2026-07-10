@@ -97,4 +97,23 @@ async function markRead(id) {
   await gmail.users.messages.modify({ userId: GMAIL_USER, id, requestBody: { removeLabelIds: ['UNREAD'] } });
 }
 
-module.exports = { enabled, listUnreadInbound, getMessage, getThreadText, createDraft, markRead, GMAIL_USER };
+
+// Latest message SENT by the mailbox owner (Matt) in this thread after `afterMs`
+// (epoch ms). Used to reconcile a Leucrocotta draft against what Matt actually
+// sent. Returns { id, ts, text } or null.
+async function getSentReplyInThread(threadId, afterMs = 0) {
+  const gmail = getGmail();
+  const res = await gmail.users.threads.get({ userId: GMAIL_USER, id: threadId, format: 'full' });
+  let best = null;
+  for (const m of res.data.messages || []) {
+    const from = header(m.payload, 'From').toLowerCase();
+    const ts = Number(m.internalDate || 0);
+    const isSent = (m.labelIds || []).includes('SENT') || from.includes(GMAIL_USER.toLowerCase());
+    if (isSent && ts > afterMs && (!best || ts > best.ts)) {
+      best = { id: m.id, ts, text: extractBody(m.payload) || m.snippet || '' };
+    }
+  }
+  return best;
+}
+
+module.exports = { enabled, listUnreadInbound, getMessage, getThreadText, createDraft, markRead, getSentReplyInThread, GMAIL_USER };
