@@ -48,7 +48,56 @@ async function handleCustomerMessage(msg) {
   const note = `\n- ${new Date().toISOString().slice(0, 10)}: replied re "${msg.subject}"`;
   await memory.writeContactMemory(customerEmail, (contactMemory || `# ${customerEmail}\n`) + note);
 
+  // Record the draft so the learning loop can later compare it to what Matt sent.
+  try {
+    const log = await memory.readDraftLog();
+    log.push({ threadId: msg.threadId, customerEmail, subject, draftBody: body, createdMs: Date.now(), reconciled: false });
+    await memory.writeDraftLog(log);
+  } catch (e) { console.error('draft-log write failed:', e.message); }
+
   return { action: 'customer_message', customerEmail, drafted: true };
+}
+
+
+// Learning loop: for each recorded draft, once Matt has SENT his own reply in the
+// thread, compare draft vs. sent and fold the lessons into voice + contact memory.
+// Fully guarded and best-effort — never throws into the poll. Drops entries once
+// reconciled, and prunes anything older than 30 days.
+async function reconcileDrafts() {
+  if (!drafter.enabled() || !memory.enabled()) return { reconciled: 0 };
+  const log = await memory.readDraftLog();
+  if (!log.length) return { reconciled: 0 };
+
+  const today = new Date().toISOString().slice(0, 10);
+  let count = 0;
+  for (const rec of log) {
+    if (rec.reconciled) continue;
+    try {
+      const sent = await gmail.getSentReplyInThread(rec.threadId, rec.createdMs);
+      if (!sent || !sent.text) continue; // Matt hasn't sent his reply yet
+
+      const threadText = await gmail.getThreadText(rec.threadId);
+      const { voiceLesson, contactLesson } = await drafter.learnFromReply({
+        threadText, draftBody: rec.draftBody, sentBody: sent.text,
+      });
+
+      if (voiceLesson) {
+        const voice = await memory.readVoice();
+        await memory.writeVoice(`${voice || "# Mayor — Matt's Email Voice"}\n- (learned ${today}): ${voiceLesson}`);
+      }
+      if (contactLesson) {
+        const cm = await memory.readContactMemory(rec.customerEmail);
+        await memory.writeContactMemory(rec.customerEmail, `${cm || `# ${rec.customerEmail}`}\n- ${today}: ${contactLesson}`);
+      }
+      rec.reconciled = true;
+      count += 1;
+    } catch (e) { console.error(`reconcile ${rec.threadId} failed:`, e.message); }
+  }
+
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const remaining = log.filter((r) => !r.reconciled && r.createdMs > cutoff);
+  if (remaining.length !== log.length) await memory.writeDraftLog(remaining);
+  return { reconciled: count };
 }
 
 async function runInboxPoll() {
@@ -70,7 +119,10 @@ async function runInboxPoll() {
       results.push({ action: 'error', error: e.message });
     }
   }
-  return { skipped: null, results };
+  let reconciled = 0;
+  try { reconciled = (await reconcileDrafts()).reconciled; } catch (e) { console.error('reconcile pass failed:', e.message); }
+
+  return { skipped: null, results, reconciled };
 }
 
-module.exports = { runInboxPoll, handleNickelPaid, handleCustomerMessage };
+module.exports = { runInboxPoll, handleNickelPaid, handleCustomerMessage, reconcileDrafts };
