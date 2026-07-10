@@ -22,7 +22,7 @@ const INVOICE_PROPERTIES = [
   'sizes_1', 'sizes_2', 'sizes_3', 'sizes_4', 'sizes_5',
   ...QTY_PROPS, ...PRICE_PROPS,
   'za_embroidery', 'zb_art_setup', 'z_sample_reimbursement', 'custom_main_label', 'shipping_cost',
-  'zj_payment_terms', 'z_crossouts',
+  'payment_terms', 'unstrike',
 ];
 
 // parseFloat that tolerates "$", "," and stray spaces; preserves a leading minus.
@@ -68,16 +68,15 @@ function dealToRenderPayload(deal, docType) {
   // Payment links: one field, one or two links separated by " / " => 50/50 labeling.
   const links = String(p.y_payment_link || '').split(' / ').map((s) => s.trim()).filter(Boolean);
 
-  // Cross-outs. Original default: Embroidery + Art Setup are struck (waived,
-  // excluded from the total); Shipping is not. The z_crossouts multi-select
-  // overrides per deal: leave it BLANK for the standard default; SET it to take
-  // explicit control (strike exactly the listed items — select a "None" option to
-  // charge everything). ";"-separated option labels.
-  const crossRaw = String(p.z_crossouts || '').trim();
-  const crossList = crossRaw ? crossRaw.split(';').map((s) => s.trim().toLowerCase()) : null;
-  const strikeEmb = crossList ? crossList.includes('embroidery') : true;
-  const strikeArt = crossList ? crossList.includes('art setup') : true;
-  const strikeShip = crossList ? crossList.includes('shipping') : false;
+  // Strike/waive logic driven by the "Unstrike" field (free text; ";" or ","
+  // separated item names). Defaults: Embroidery + Art Setup are struck (waived,
+  // excluded from the total); Shipping is charged. "Unstrike" flips an item from
+  // its default — listing Embroidery or Art Setup charges it; listing Shipping
+  // strikes (waives) it.
+  const unstrikeList = String(p.unstrike || '').toLowerCase().split(/[;,]/).map((s) => s.trim());
+  const strikeEmb = !unstrikeList.includes('embroidery');
+  const strikeArt = !unstrikeList.includes('art setup');
+  const strikeShip = unstrikeList.includes('shipping');
 
   const emb = n(p.za_embroidery);
   const art = n(p.zb_art_setup);           // signed: negative = art credit
@@ -108,7 +107,7 @@ function dealToRenderPayload(deal, docType) {
     product_page: p.product_page || '',
     payment_link: links[0] || '',
     payment_link_2: links[1] || '',
-    payment_terms: p.zj_payment_terms || '',
+    payment_terms: p.payment_terms || '',
     line_items,
     subtotal: 0,                            // force doc-render to recompute from line items
     total: 0,                               // ditto — line items are the source of truth
