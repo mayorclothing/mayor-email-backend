@@ -1,17 +1,18 @@
 const express = require('express');
 const { config, assertConfigured } = require('./config');
 const { verifyHubspotSignature } = require('./verifyHubspot');
-const { getDeal, getContact, getPrimaryContactId, logNoteOnContact, markDealFollowUpSent } = require('./hubspot');
-const { sendEmail } = require('./resend');
-const { orderFollowUpEmail } = require('./orderFollowUpEmail');
 const { classifyTriggerEvent, runAction } = require('./hermesService');
 
 const router = express.Router();
-const sentDealIds = new Set();
 
+// HubSpot deal-property-change webhook. Sole job: drive the Hermes document /
+// status triggers (OC, Invoice, tracking -> In Transit, delivered -> Delivered).
+// The old order-placed follow-up email was removed per business decision — the
+// only automatic customer email is handled elsewhere — so this route no longer
+// depends on HUBSPOT_ORDER_DEAL_STAGE or Resend.
 router.post('/hubspot', async (req, res, next) => {
   try {
-    assertConfigured(['hubspot.token', 'hubspot.clientSecret', 'hubspot.orderDealStage', 'resend.apiKey', 'resend.fromEmail']);
+    assertConfigured(['hubspot.token', 'hubspot.clientSecret']);
 
     const signature = req.header('X-HubSpot-Signature-v3');
     const timestamp = req.header('X-HubSpot-Request-Timestamp');
@@ -40,35 +41,7 @@ router.post('/hubspot', async (req, res, next) => {
         } catch (err) {
           console.error(`Hermes trigger ${trigger.action} failed for deal ${trigger.dealId}:`, err.message);
         }
-        continue;
       }
-
-      if (event.subscriptionType !== 'deal.propertyChange' || event.propertyName !== 'dealstage') continue;
-      if (event.propertyValue !== config.hubspot.orderDealStage) continue;
-
-      const dealId = String(event.objectId);
-      if (sentDealIds.has(dealId)) continue;
-
-      const deal = await getDeal(dealId);
-      const contactId = await getPrimaryContactId(deal);
-      if (!contactId) continue;
-
-      const contact = await getContact(contactId);
-      if (contact.properties?.followup_sent === 'true') {
-        sentDealIds.add(dealId);
-        continue;
-      }
-
-      const email = orderFollowUpEmail({
-        firstName: contact.properties?.firstname,
-        dealName: deal.properties?.dealname,
-      });
-
-      await sendEmail({ to: contact.properties?.email, subject: email.subject, html: email.html });
-      await logNoteOnContact(contactId, 'Order follow-up email sent automatically.');
-      await markDealFollowUpSent(dealId);
-
-      sentDealIds.add(dealId);
     }
 
     res.status(200).json({ received: true });
