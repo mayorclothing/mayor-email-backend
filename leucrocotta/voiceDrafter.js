@@ -47,4 +47,25 @@ async function draftReply({ threadText = '', voice = '', knowledge = '', contact
     .trim();
 }
 
-module.exports = { enabled, draftReply };
+
+// Compare the assistant's draft against the reply Matt actually sent, and return
+// compact lessons to fold into the brain. No web tool; small + cheap.
+async function learnFromReply({ threadText = '', draftBody = '', sentBody = '' }) {
+  const client = new Anthropic();
+  const system = `You tune an AI email-drafting assistant that writes replies for Matt (founder of Mayor). You are given the assistant's DRAFT and the reply Matt ACTUALLY SENT. Infer what Matt changed and why, so future drafts match him better.
+Return ONLY compact JSON: {"voiceLesson":"<one concise, generalizable style/voice lesson, or empty string>","contactLesson":"<one concise durable fact about this customer worth remembering, or empty string>"}.
+If the draft and sent reply are essentially the same, return empty strings for both. No text outside the JSON.`;
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 600,
+    system,
+    messages: [{ role: 'user', content: `THREAD:\n${threadText}\n\n--- ASSISTANT DRAFT ---\n${draftBody}\n\n--- WHAT MATT SENT ---\n${sentBody}` }],
+  });
+  const txt = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+  try {
+    const j = JSON.parse(txt.replace(/^```json\s*/i, '').replace(/```$/, '').trim());
+    return { voiceLesson: String(j.voiceLesson || '').trim(), contactLesson: String(j.contactLesson || '').trim() };
+  } catch { return { voiceLesson: '', contactLesson: '' }; }
+}
+
+module.exports = { enabled, draftReply, learnFromReply };
