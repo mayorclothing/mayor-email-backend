@@ -30,13 +30,14 @@ async function handleCustomerMessage(msg) {
   if (!drafter.enabled()) return { action: 'customer_message', skipped: 'no ANTHROPIC_API_KEY' };
 
   const customerEmail = extractAddress(msg.from);
-  const [threadText, voice, contactMemory] = await Promise.all([
+  const [threadText, voice, knowledge, contactMemory] = await Promise.all([
     gmail.getThreadText(msg.threadId),
     memory.readVoice(),
+    memory.readKnowledge(),
     memory.readContactMemory(customerEmail),
   ]);
 
-  const body = await drafter.draftReply({ threadText: threadText || msg.text, voice, contactMemory, customerEmail });
+  const body = await drafter.draftReply({ threadText: threadText || msg.text, voice, knowledge, contactMemory, customerEmail });
   if (!body) return { action: 'customer_message', skipped: 'empty draft' };
 
   const subject = /^re:/i.test(msg.subject) ? msg.subject : `Re: ${msg.subject}`;
