@@ -17,9 +17,13 @@ function enabled() {
 }
 
 function getDrive() {
-  const auth = new google.auth.GoogleAuth({
-    credentials: CREDS,
+  // Impersonate the Workspace user (domain-wide delegation) — service accounts
+  // have no Drive storage quota and can't own files on their own.
+  const auth = new google.auth.JWT({
+    email: CREDS.client_email,
+    key: CREDS.private_key,
     scopes: ['https://www.googleapis.com/auth/drive'],
+    subject: process.env.GMAIL_USER || 'mayor@mayorclothing.com',
   });
   return google.drive({ version: 'v3', auth });
 }
