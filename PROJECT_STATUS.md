@@ -6,7 +6,7 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 
 | Repo | What it is | State |
 |------|------------|-------|
-| `mayor-email-backend` | The agent backend (Express on Render). Webhooks, Hermes doc engine, Leucrocotta inbox agent, newsletter. | **Core code complete, not yet deployed / configured** |
+| `mayor-email-backend` | The agent backend (Express on Render). Webhooks, Hermes doc engine, Leucrocotta inbox agent, newsletter. | **Deployed & live** at `mayor-email-backend.onrender.com`; both poll crons authenticating. Still needs HubSpot + Google config to do real work. |
 | `mayor-invoice` | Standalone server that renders invoice PDFs from a JSON/HubSpot payload + a customer order portal. | Working, deployable |
 | `mayor-tools` | Single-file browser tool (`index.html`) for building invoices by hand. | Working |
 
@@ -78,9 +78,10 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 **4. Mail sending**
 - Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO`, `BRAND_LOGO_URL`, `INTERNAL_API_KEY`
 
-**5. Deploy**
-- Push repo, create the Render web service + two crons from `render.yaml`, fill all `sync:false` env vars in the dashboard
-- Smoke-test each endpoint end to end (`/hermes/generate`, `/hermes/poll`, `/leucrocotta/poll`, `/newsletter/send`, webhook)
+**5. Deploy** — ✅ Done
+- Live on Render (web + `hermes-poll` + `leucrocotta-poll` crons). `INTERNAL_API_KEY` set identically across all three; crons authenticate (200).
+- `/health` verified 200. `hermes-poll` returns `200 skipped` until `HUBSPOT_TOKEN` is set; `leucrocotta-poll` returns `200 skipped` until Gmail creds are set — both green by design.
+- Remaining smoke-tests once configured: `/hermes/generate`, real HubSpot webhook, `/newsletter/send`.
 
 **6. Loose ends / known shortcuts**
 - No `npm test` script — the `.test.js` files exist but aren't wired to a runner. Add one (`node --test`).
