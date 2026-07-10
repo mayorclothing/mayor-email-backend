@@ -68,8 +68,17 @@ async function writeTextFile(name, content) {
 }
 
 const readVoice = () => readTextFile('voice.md');
+const writeVoice = (content) => writeTextFile('voice.md', content);
 const readKnowledge = () => readTextFile('knowledge.md');
+
+// Pending-draft log (JSON) used by the learning loop to reconcile a draft against
+// what Matt actually sent.
+async function readDraftLog() {
+  const t = await readTextFile('draft-log.json');
+  try { return t ? JSON.parse(t) : []; } catch { return []; }
+}
+const writeDraftLog = (arr) => writeTextFile('draft-log.json', JSON.stringify(arr, null, 2));
 const readContactMemory = (email) => readTextFile(contactFileName(email));
 const writeContactMemory = (email, content) => writeTextFile(contactFileName(email), content);
 
-module.exports = { enabled, readVoice, readKnowledge, readContactMemory, writeContactMemory };
+module.exports = { enabled, readVoice, writeVoice, readKnowledge, readContactMemory, writeContactMemory, readDraftLog, writeDraftLog };
