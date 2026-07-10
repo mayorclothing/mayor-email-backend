@@ -31,22 +31,18 @@ services:
 
   # Hourly safety-net poll: reconciles HubSpot trigger flags via /hermes/poll.
   # Curls the web service so all HubSpot/Google secrets stay there — the cron
-  # only needs the API key + the service host.
+  # only needs the API key. Host is hardcoded: the fromService host wiring
+  # resolved unreachably (curl exit 7); the public URL is stable, so use it.
   - type: cron
     name: hermes-poll
     runtime: node
     plan: starter
     schedule: "0 * * * *"
     buildCommand: "true"
-    startCommand: 'curl -fsS -X POST "https://$POLL_HOST/hermes/poll" -H "Authorization: Bearer $INTERNAL_API_KEY"'
+    startCommand: 'curl -fsS -X POST "https://mayor-email-backend.onrender.com/hermes/poll" -H "Authorization: Bearer $INTERNAL_API_KEY"'
     envVars:
       - key: INTERNAL_API_KEY
         sync: false
-      - key: POLL_HOST
-        fromService:
-          type: web
-          name: mayor-email-backend
-          property: host
 
   # Leucrocotta inbox poll: read unread mail, draft replies / flip paid status.
   - type: cron
@@ -55,12 +51,7 @@ services:
     plan: starter
     schedule: "*/15 * * * *"
     buildCommand: "true"
-    startCommand: 'curl -fsS -X POST "https://$POLL_HOST/leucrocotta/poll" -H "Authorization: Bearer $INTERNAL_API_KEY"'
+    startCommand: 'curl -fsS -X POST "https://mayor-email-backend.onrender.com/leucrocotta/poll" -H "Authorization: Bearer $INTERNAL_API_KEY"'
     envVars:
       - key: INTERNAL_API_KEY
         sync: false
-      - key: POLL_HOST
-        fromService:
-          type: web
-          name: mayor-email-backend
-          property: host
