@@ -68,7 +68,8 @@ async function writeTextFile(name, content) {
 }
 
 const readVoice = () => readTextFile('voice.md');
+const readKnowledge = () => readTextFile('knowledge.md');
 const readContactMemory = (email) => readTextFile(contactFileName(email));
 const writeContactMemory = (email, content) => writeTextFile(contactFileName(email), content);
 
-module.exports = { enabled, readVoice, readContactMemory, writeContactMemory };
+module.exports = { enabled, readVoice, readKnowledge, readContactMemory, writeContactMemory };
