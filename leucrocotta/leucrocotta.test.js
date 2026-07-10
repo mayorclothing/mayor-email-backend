@@ -4,33 +4,60 @@ const { parseNickelPaid } = require('./nickelParser');
 const { classifyEmail } = require('./emailClassifier');
 
 // --- nickelParser ---
-let r = parseNickelPaid({ subject: 'Payment received', text: 'Invoice #: Test Club I\nThanks' });
-assert.strictEqual(r.isPaid, true);
-assert.strictEqual(r.orderNumber, 'Test Club I');
+// Bodies below mirror what gmailClient produces: HTML stripped to one
+// whitespace-collapsed line. Subjects/bodies are real Nickel formats.
 
-r = parseNickelPaid({ subject: 'You have been paid', text: 'Order Number: OKC G&CC II' });
+// Club-name ref, from the subject phrase.
+let r = parseNickelPaid({
+  subject: 'Processed Card Payment of $1,845.00 for Morris County Golf Club I from Craig Smith Golf Shop LLC',
+  text: 'Payment received You received a card payment of $1,845.00 for Morris County Golf Club I from Craig Smith Golf Shop LLC. This payment has been confirmed by the card network. From Craig Smith Golf Shop LLC Payment method American express ···· 1014 Order reference Morris County Golf Club I Est. payout date 07/08/2026',
+});
 assert.strictEqual(r.isPaid, true);
-assert.strictEqual(r.orderNumber, 'OKC G&CC II');
+assert.strictEqual(r.orderNumber, 'Morris County Golf Club I');
 
+// Numeric ref, and the labeled "Order Reference" field in the body.
+r = parseNickelPaid({
+  subject: 'Processed Card Payment of $3,140.00 for 8901 from Golf Drawn, LLC',
+  text: 'Payment Received You received a card payment of $3,140.00 for 8901 from Golf Drawn, LLC. This payment has been confirmed by the card network. Payment ID cmr20mkg201tnur02eyya6zsf Paid To Mayor Clothing LLC Amount Submitted $3,140.00 Order Reference 8901 Payment Method American express ···· 2010',
+});
+assert.strictEqual(r.isPaid, true);
+assert.strictEqual(r.orderNumber, '8901');
+
+// Empty ref ("for  from ...") — paid, but no order number to act on.
+r = parseNickelPaid({
+  subject: 'Processed ACH Payment of $1,845.00 for  from PIN HUNTERS GOLF LLC',
+  text: 'Payment received An ACH payment of $1,845.00 for  from PIN HUNTERS GOLF LLC was submitted and will be sent for processing.',
+});
+assert.strictEqual(r.isPaid, true);
+assert.strictEqual(r.orderNumber, null);
+
+// Bank payout ("You Got Paid") — no order-level ref.
+r = parseNickelPaid({
+  subject: 'You Got Paid',
+  text: 'You Got Paid We just sent payouts totaling $12979.00 to your bank account.',
+});
+assert.strictEqual(r.isPaid, true);
+assert.strictEqual(r.orderNumber, null);
+
+// Not a payment email.
 r = parseNickelPaid({ subject: 'Newsletter', text: 'Check out our new styles' });
 assert.strictEqual(r.isPaid, false);
 assert.strictEqual(r.orderNumber, null);
 
-// paid but no parseable ref
-r = parseNickelPaid({ subject: 'Payment successful', text: 'A customer paid you.' });
-assert.strictEqual(r.isPaid, true);
-assert.strictEqual(r.orderNumber, null);
-
 // --- classifyEmail ---
-const opts = { nickelSender: 'notify@nickel.com', selfAddresses: ['mayor@mayorclothing.com'] };
+const opts = { nickelSender: 'support@nickel.com', selfAddresses: ['mayor@mayorclothing.com'] };
 
 assert.strictEqual(
-  classifyEmail({ from: 'Nickel <notify@nickel.com>', subject: 'Paid', text: 'Invoice #: X paid' }, opts),
+  classifyEmail({
+    from: 'Nickel <support@nickel.com>',
+    subject: 'Processed Card Payment of $3,140.00 for 8901 from Golf Drawn, LLC',
+    text: 'Payment Received You received a card payment of $3,140.00 for 8901 from Golf Drawn, LLC.',
+  }, opts),
   'nickel_paid');
 
 // nickel sender but not a paid email => ignore
 assert.strictEqual(
-  classifyEmail({ from: 'notify@nickel.com', subject: 'Your account', text: 'settings changed' }, opts),
+  classifyEmail({ from: 'support@nickel.com', subject: 'Your account', text: 'settings changed' }, opts),
   'ignore');
 
 // real customer

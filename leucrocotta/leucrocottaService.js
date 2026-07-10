@@ -10,7 +10,7 @@ const gmail = require('./gmailClient');
 const memory = require('./driveMemory');
 const drafter = require('./voiceDrafter');
 
-const NICKEL_SENDER = process.env.NICKEL_SENDER || '';
+const NICKEL_SENDER = process.env.NICKEL_SENDER || 'support@nickel.com';
 
 // "Matt Bartini <mayor@x.com>" -> "mayor@x.com"
 function extractAddress(from) {

@@ -72,8 +72,8 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 
 **3. Claude + Nickel**
 - Set `ANTHROPIC_API_KEY` — without it Leucrocotta classifies but won't draft replies
-- Set `NICKEL_SENDER` — the classifier can't identify Nickel payment mail without it
-- **Tune `nickelParser.js` regexes against a real Nickel "paid" email.** Currently best-effort (marked `ponytail:` in the file); order numbers are free-text so the labeled-reference extraction needs one real sample to trust.
+- `NICKEL_SENDER` now defaults to `support@nickel.com` (the real address); only set the env var to override.
+- ~~Tune `nickelParser.js` regexes against a real Nickel email.~~ **Done** — tuned against real `support@nickel.com` mail: extracts the order ref from the `Payment of $X for <ref> from <payer>` phrase (subject + body) with the labeled `Order Reference` field as backstop, handles numeric refs, club-name refs, empty refs, and bank-payout emails. Covered by `leucrocotta.test.js`.
 
 **4. Mail sending**
 - Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO`, `BRAND_LOGO_URL`, `INTERNAL_API_KEY`
