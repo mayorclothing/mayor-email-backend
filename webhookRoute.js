@@ -4,6 +4,7 @@ const { verifyHubspotSignature } = require('./verifyHubspot');
 const { getDeal, getContact, getPrimaryContactId, logNoteOnContact, markDealFollowUpSent } = require('./hubspot');
 const { sendEmail } = require('./resend');
 const { orderFollowUpEmail } = require('./orderFollowUpEmail');
+const { classifyTriggerEvent, runAction } = require('./hermesService');
 
 const router = express.Router();
 const sentDealIds = new Set();
@@ -31,6 +32,17 @@ router.post('/hubspot', async (req, res, next) => {
     const events = Array.isArray(req.body) ? req.body : [];
 
     for (const event of events) {
+      // Hermes fast-path: OC/Invoice generation + tracking/delivered status.
+      const trigger = classifyTriggerEvent(event);
+      if (trigger) {
+        try {
+          await runAction(trigger);
+        } catch (err) {
+          console.error(`Hermes trigger ${trigger.action} failed for deal ${trigger.dealId}:`, err.message);
+        }
+        continue;
+      }
+
       if (event.subscriptionType !== 'deal.propertyChange' || event.propertyName !== 'dealstage') continue;
       if (event.propertyValue !== config.hubspot.orderDealStage) continue;
 

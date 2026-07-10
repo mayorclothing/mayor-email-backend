@@ -1,0 +1,126 @@
+// Hermes core: generate a document from a HubSpot deal, and the status
+// transitions. Shared by the HTTP route, the webhook fast-path, and the poll.
+
+const { getInvoiceDeal, searchDeals } = require('./hubspot');
+const { dealToRenderPayload, INVOICE_PROPERTIES } = require('./hermesMapping');
+const { renderInvoicePdf } = require('./doc-render');
+const { persistOrder, setOrderStatus } = require('./googleStore');
+
+// Trigger property names (blueprint §4.3). Created manually in HubSpot; until
+// then triggers simply never fire and the poll's searches no-op.
+const TRIGGER = {
+  oc: 'zc_trigger_oc',
+  invoice: 'zd_trigger_invoice',
+  tracking: 'zg_tracking_number',
+  delivered: 'zf_delivered_date',
+};
+
+// Idempotency across route + webhook + poll (one process). ponytail: in-memory,
+// resets on restart; the persistent backstop is the MO-sheet row itself (the poll
+// gates on it). Upgrade to a Drive snapshot only if restarts cause real churn.
+const seenKeys = new Set();
+
+// docType: 'order_confirmation' | 'invoice'
+async function generateDocument({ dealId, docType, idempotencyKey }) {
+  const deal = await getInvoiceDeal(dealId, INVOICE_PROPERTIES);
+  const payload = dealToRenderPayload(deal, docType);
+  const orderNumber = payload.order_number;
+
+  // Blueprint §6.1: an invoice only generates once a payment link is present.
+  if (docType === 'invoice' && !payload.payment_link) {
+    return { ok: false, docType, orderNumber, skipped: 'no payment link' };
+  }
+
+  const key = idempotencyKey || `${orderNumber}:${docType}`;
+  if (seenKeys.has(key)) {
+    return { ok: true, docType, orderNumber, skipped: true };
+  }
+
+  const pdf = await renderInvoicePdf(payload);
+  const persist = await persistOrder({ payload, docType, pdfBuffer: pdf });
+  seenKeys.add(key);
+
+  return {
+    ok: true,
+    docType,
+    orderNumber,
+    status: persist.status,
+    driveFileId: persist.driveFileId,
+    pdfUrl: persist.pdfUrl,
+    persisted: persist.persisted,
+    pdf, // Buffer; the HTTP route base64-encodes it, triggers ignore it
+  };
+}
+
+async function markInTransit(dealId) {
+  const deal = await getInvoiceDeal(dealId, ['order_number', TRIGGER.tracking]);
+  const p = deal.properties || {};
+  return setOrderStatus({ orderNumber: p.order_number, status: 'In Transit', tracking: p[TRIGGER.tracking] });
+}
+
+async function markDelivered(dealId) {
+  const deal = await getInvoiceDeal(dealId, ['order_number', TRIGGER.delivered]);
+  const p = deal.properties || {};
+  return setOrderStatus({ orderNumber: p.order_number, status: 'Delivered', deliveredDate: p[TRIGGER.delivered] });
+}
+
+// Nickel "paid" -> Pending. Called by Leucrocotta with the parsed order number.
+async function markPaid(orderNumber) {
+  return setOrderStatus({ orderNumber, status: 'Pending' });
+}
+
+// Pure: map a HubSpot webhook event -> an action. Returns null for irrelevant events.
+function classifyTriggerEvent(event) {
+  if (event?.subscriptionType !== 'deal.propertyChange') return null;
+  const dealId = String(event.objectId);
+  const val = event.propertyValue;
+  const isTrue = val === true || val === 'true';
+  const isSet = val != null && String(val).trim() !== '';
+  switch (event.propertyName) {
+    case TRIGGER.oc:        return isTrue ? { action: 'generate_oc', dealId } : null;
+    case TRIGGER.invoice:   return isTrue ? { action: 'generate_invoice', dealId } : null;
+    case TRIGGER.tracking:  return isSet ? { action: 'in_transit', dealId } : null;
+    case TRIGGER.delivered: return isSet ? { action: 'delivered', dealId } : null;
+    default: return null;
+  }
+}
+
+// Run one classified action. Central dispatch used by webhook + poll.
+async function runAction({ action, dealId }) {
+  switch (action) {
+    case 'generate_oc':      return generateDocument({ dealId, docType: 'order_confirmation' });
+    case 'generate_invoice': return generateDocument({ dealId, docType: 'invoice' });
+    case 'in_transit':       return markInTransit(dealId);
+    case 'delivered':        return markDelivered(dealId);
+    default: return null;
+  }
+}
+
+// Safety-net poll: reconcile deals whose trigger flags are set. Idempotency +
+// the "no payment link" / "already generated" guards make repeats cheap. Each
+// search is isolated so a not-yet-created property can't sink the whole run.
+async function runPoll() {
+  const counts = { generate_oc: 0, generate_invoice: 0, in_transit: 0, delivered: 0, errors: 0 };
+
+  const scan = async (filter, action) => {
+    try {
+      const deals = await searchDeals([{ filters: [filter] }], ['order_number']);
+      for (const d of deals) {
+        try { await runAction({ action, dealId: d.id }); counts[action] += 1; }
+        catch (e) { counts.errors += 1; console.error(`poll ${action} deal ${d.id}:`, e.message); }
+      }
+    } catch (e) {
+      // Property likely not created yet — expected before manual HubSpot config.
+      console.warn(`poll scan ${action} skipped:`, e.message);
+    }
+  };
+
+  await scan({ propertyName: TRIGGER.oc, operator: 'EQ', value: 'true' }, 'generate_oc');
+  await scan({ propertyName: TRIGGER.invoice, operator: 'EQ', value: 'true' }, 'generate_invoice');
+  await scan({ propertyName: TRIGGER.tracking, operator: 'HAS_PROPERTY' }, 'in_transit');
+  await scan({ propertyName: TRIGGER.delivered, operator: 'HAS_PROPERTY' }, 'delivered');
+
+  return counts;
+}
+
+module.exports = { generateDocument, markInTransit, markDelivered, markPaid, classifyTriggerEvent, runAction, runPoll, TRIGGER };

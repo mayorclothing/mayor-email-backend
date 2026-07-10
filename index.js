@@ -2,6 +2,8 @@ const express = require('express');
 const { config } = require('./config');
 const webhookRoute = require('./webhookRoute');
 const newsletterRoute = require('./newsletterRoute');
+const hermesRoute = require('./hermesRoute');
+const leucrocottaRoute = require('./leucrocottaRoute');
 
 const app = express();
 
@@ -19,6 +21,8 @@ app.get('/health', (_req, res) => {
 
 app.use('/webhooks', webhookRoute);
 app.use('/newsletter', newsletterRoute);
+app.use('/hermes', hermesRoute);
+app.use('/leucrocotta', leucrocottaRoute);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });

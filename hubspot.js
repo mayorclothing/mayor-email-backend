@@ -25,6 +25,27 @@ async function getDeal(dealId) {
   return hubspotFetch(`/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,followup_sent&associations=contacts`);
 }
 
+async function getInvoiceDeal(dealId, properties) {
+  const params = new URLSearchParams({ properties: properties.join(',') });
+  return hubspotFetch(`/crm/v3/objects/deals/${dealId}?${params.toString()}`);
+}
+
+async function searchDeals(filterGroups, properties) {
+  const body = { filterGroups, properties, limit: 100 };
+  const results = [];
+  let after;
+  do {
+    if (after) body.after = after;
+    const page = await hubspotFetch('/crm/v3/objects/deals/search', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    results.push(...(page.results || []));
+    after = page.paging?.next?.after;
+  } while (after);
+  return results;
+}
+
 async function getContact(contactId) {
   return hubspotFetch(`/crm/v3/objects/contacts/${contactId}?properties=email,firstname,lastname,followup_sent`);
 }
@@ -89,6 +110,8 @@ async function getListMemberEmails(listId) {
 
 module.exports = {
   getDeal,
+  getInvoiceDeal,
+  searchDeals,
   getContact,
   getPrimaryContactId,
   logNoteOnContact,
