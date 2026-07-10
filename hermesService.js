@@ -58,9 +58,26 @@ async function markInTransit(dealId) {
   return setOrderStatus({ orderNumber: p.order_number, status: 'In Transit', tracking: p[TRIGGER.tracking] });
 }
 
+
+// The delivered trigger (zf_delivered_date = "In Hand Date") is a PLANNED date.
+// Only mark an order Delivered once that date is today or already past — never on
+// a future date. HubSpot date props come back as midnight-UTC epoch millis.
+function inHandReached(v) {
+  if (v == null || String(v).trim() === '') return false;
+  const str = String(v).trim();
+  const ms = /^\d+$/.test(str) ? Number(str) : new Date(str).getTime();
+  if (isNaN(ms)) return false;
+  const now = new Date();
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return ms <= todayUTC;
+}
+
 async function markDelivered(dealId) {
   const deal = await getInvoiceDeal(dealId, ['order_number', TRIGGER.delivered]);
   const p = deal.properties || {};
+  if (!inHandReached(p[TRIGGER.delivered])) {
+    return { action: 'delivered', orderNumber: p.order_number, skipped: 'in hand date is in the future' };
+  }
   return setOrderStatus({ orderNumber: p.order_number, status: 'Delivered', deliveredDate: p[TRIGGER.delivered] });
 }
 
@@ -118,7 +135,9 @@ async function runPoll() {
   await scan({ propertyName: TRIGGER.oc, operator: 'EQ', value: 'true' }, 'generate_oc');
   await scan({ propertyName: TRIGGER.invoice, operator: 'EQ', value: 'true' }, 'generate_invoice');
   await scan({ propertyName: TRIGGER.tracking, operator: 'HAS_PROPERTY' }, 'in_transit');
-  await scan({ propertyName: TRIGGER.delivered, operator: 'HAS_PROPERTY' }, 'delivered');
+  const now = new Date();
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  await scan({ propertyName: TRIGGER.delivered, operator: 'LTE', value: String(todayUTC) }, 'delivered');
 
   return counts;
 }
