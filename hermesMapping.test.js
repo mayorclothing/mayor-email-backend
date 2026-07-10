@@ -26,8 +26,8 @@ const deal = {
     z_sample_reimbursement: '40',
     custom_main_label: '0',
     shipping_cost: '25',
-    zj_payment_terms: '',
-    z_crossouts: 'Embroidery;Shipping',
+    payment_terms: 'Due on receipt.',
+    unstrike: '',
   },
 };
 
@@ -55,9 +55,10 @@ assert.strictEqual(p.line_items[1].url, '');
 assert.strictEqual(p.embroidery, 150);
 assert.strictEqual(p.strike_embroidery, true);
 assert.strictEqual(p.art_setup, -40);
-assert.strictEqual(p.strike_art, false);
+assert.strictEqual(p.strike_art, true);
 assert.strictEqual(p.shipping, 25);
-assert.strictEqual(p.strike_shipping, true);
+assert.strictEqual(p.strike_shipping, false);
+assert.strictEqual(p.payment_terms, 'Due on receipt.');
 assert.strictEqual(p.sample_reimbursement, '(40.00)');
 assert.strictEqual(p.custom_label, null); // 0 => omitted
 
@@ -71,15 +72,15 @@ assert.strictEqual(dealToRenderPayload(deal, 'order_confirmation').type, 'confir
 // Empty deal => empty-but-valid payload, no throw
 const empty = dealToRenderPayload({ properties: {} }, 'invoice');
 assert.strictEqual(empty.line_items.length, 0);
-// Default (no z_crossouts) strikes embroidery + art setup, matching the original tool.
+// Default (no Unstrike): embroidery + art setup struck, shipping charged.
 assert.strictEqual(empty.strike_embroidery, true);
 assert.strictEqual(empty.strike_art, true);
 assert.strictEqual(empty.strike_shipping, false);
-// Explicit z_crossouts takes full control.
-const explicit = dealToRenderPayload({ properties: { z_crossouts: 'Shipping' } }, 'invoice');
-assert.strictEqual(explicit.strike_embroidery, false);
-assert.strictEqual(explicit.strike_art, false);
-assert.strictEqual(explicit.strike_shipping, true);
+// Unstrike flips items from default: Embroidery/Art -> charged; Shipping -> struck.
+const uns = dealToRenderPayload({ properties: { unstrike: 'Embroidery; Shipping' } }, 'invoice');
+assert.strictEqual(uns.strike_embroidery, false);
+assert.strictEqual(uns.strike_art, true);
+assert.strictEqual(uns.strike_shipping, true);
 
 // Property list covers all 5 slots of qty + price
 assert.ok(INVOICE_PROPERTIES.includes('z_quantity_5'));
