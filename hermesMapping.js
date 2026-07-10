@@ -8,6 +8,8 @@
 
 // Real HubSpot property names, per slot (1..5). The letter prefixes are Matt's
 // display-sort convention, not multiple values — one qty + one price per slot.
+const { formatAddrHS, parseShipDate, cleanDescription, qtyFromSizes } = require('./hubspotFormat');
+
 const QTY_PROPS   = ['k_quantity_1', 'l_quantity_2', 'm_quantity_3', 'z_quantity_4', 'z_quantity_5'];
 const PRICE_PROPS = ['n_price_1', 'z_price_2', 'z_price_3', 'z_price_4', 'z_price_5'];
 
@@ -41,11 +43,11 @@ function dealToRenderPayload(deal, docType) {
   // Line items: mirror the invoice-generator tab's build (product-as-URL -> image).
   const line_items = [];
   for (let i = 0; i < 5; i++) {
-    const qty = n(p[QTY_PROPS[i]]);
-    const desc = (p['description_' + (i + 1)] || '').trim();
-    if (!qty && !desc) continue;
-
+    const desc = cleanDescription((p['description_' + (i + 1)] || '').trim());
     const sizes = (p['sizes_' + (i + 1)] || '').trim();
+    let qty = n(p[QTY_PROPS[i]]);
+    if (!qty && sizes) qty = qtyFromSizes(sizes);  // auto-qty from sizes (original rule)
+    if (!qty && !desc) continue;
     const fullDesc = sizes ? desc + (desc ? '\n' : '') + sizes : desc;
 
     const rawProduct = (p['product_' + (i + 1)] || '').trim();
@@ -66,21 +68,41 @@ function dealToRenderPayload(deal, docType) {
   // Payment links: one field, one or two links separated by " / " => 50/50 labeling.
   const links = String(p.y_payment_link || '').split(' / ').map((s) => s.trim()).filter(Boolean);
 
-  // Cross-outs: multi-select returns as a ";"-separated string of the option labels.
-  const crossouts = String(p.z_crossouts || '').split(';').map((s) => s.trim().toLowerCase());
+  // Cross-outs. Original default: Embroidery + Art Setup are struck (waived,
+  // excluded from the total); Shipping is not. The z_crossouts multi-select
+  // overrides per deal: leave it BLANK for the standard default; SET it to take
+  // explicit control (strike exactly the listed items — select a "None" option to
+  // charge everything). ";"-separated option labels.
+  const crossRaw = String(p.z_crossouts || '').trim();
+  const crossList = crossRaw ? crossRaw.split(';').map((s) => s.trim().toLowerCase()) : null;
+  const strikeEmb = crossList ? crossList.includes('embroidery') : true;
+  const strikeArt = crossList ? crossList.includes('art setup') : true;
+  const strikeShip = crossList ? crossList.includes('shipping') : false;
 
   const emb = n(p.za_embroidery);
   const art = n(p.zb_art_setup);           // signed: negative = art credit
   const label = n(p.custom_main_label);
   const sampleReimb = n(p.z_sample_reimbursement);
 
+  // Address blocks + ship date — mirror mayor-tools' formatting rules exactly.
+  // shippingbilling_address is the primary address; c_billing_address is the
+  // separate billing address when present and different.
+  const mainAddr = (p.shippingbilling_address || '').trim();
+  const billingAddr = (p.c_billing_address || '').trim();
+  let addressBlock = mainAddr ? formatAddrHS(mainAddr) : '';
+  let shippingBlock = '';
+  if (billingAddr && billingAddr !== mainAddr) {
+    addressBlock = formatAddrHS(billingAddr);
+    shippingBlock = formatAddrHS(mainAddr);
+  }
+
   return {
     type: docTypeToType(docType),
     order_number: p.order_number || '',
     club: p.club || '',
-    address: p.c_billing_address || '',
-    shipping_address: p.shippingbilling_address || '',
-    ship_date: p.ship_date || '',
+    address: addressBlock,
+    shipping_address: shippingBlock,
+    ship_date: parseShipDate(p.ship_date || ''),
     date_label: 'Ship Date',                // delivery date dropped (blueprint §4.3)
     customer_email: p.customer_email || '',
     product_page: p.product_page || '',
@@ -91,11 +113,11 @@ function dealToRenderPayload(deal, docType) {
     subtotal: 0,                            // force doc-render to recompute from line items
     total: 0,                               // ditto — line items are the source of truth
     embroidery: emb || null,
-    strike_embroidery: crossouts.includes('embroidery'),
+    strike_embroidery: strikeEmb,
     art_setup: art !== 0 ? art : null,
-    strike_art: crossouts.includes('art setup'),
+    strike_art: strikeArt,
     shipping: n(p.shipping_cost),
-    strike_shipping: crossouts.includes('shipping'),
+    strike_shipping: strikeShip,
     sample_reimbursement: sampleReimb > 0 ? `(${sampleReimb.toFixed(2)})` : null,
     custom_label: label > 0 ? label : null,
   };
