@@ -22,12 +22,18 @@ function credsPresent() {
 }
 
 function getClients() {
-  const auth = new google.auth.GoogleAuth({
-    credentials: SHEET_CREDS,
+  // Service accounts have no Drive storage quota, so acting as the SA's own
+  // identity can't create files ("Service Accounts do not have storage quota").
+  // Impersonate the Workspace user (same domain-wide delegation the Gmail client
+  // uses) so Drive/Sheets act as mayor@, who has quota and owns the brain folder.
+  const auth = new google.auth.JWT({
+    email: SHEET_CREDS.client_email,
+    key: SHEET_CREDS.private_key,
     scopes: [
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive',
     ],
+    subject: process.env.GMAIL_USER || 'mayor@mayorclothing.com',
   });
   return { sheets: google.sheets({ version: 'v4', auth }), drive: google.drive({ version: 'v3', auth }) };
 }
