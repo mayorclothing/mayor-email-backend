@@ -6,9 +6,15 @@
 
 const { parseNickelPaid } = require('./nickelParser');
 
+// Compare the actual envelope address, not the raw header — so a spoofed display
+// name like `"support@nickel.com" <attacker@evil.com>` does NOT match.
+function extractAddr(from) {
+  const m = String(from).match(/<([^>]+)>/);
+  return (m ? m[1] : String(from)).trim().toLowerCase();
+}
 function senderMatches(from, sender) {
   if (!from || !sender) return false;
-  return from.toLowerCase().includes(sender.toLowerCase());
+  return extractAddr(from) === String(sender).trim().toLowerCase();
 }
 
 // Machine/no-reply senders we never draft a human reply to.
