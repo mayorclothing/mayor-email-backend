@@ -17,6 +17,13 @@ const SHEET_ID = process.env.MO_SHEET_ID || '152hyxQz87IwPYl2lgBCm6pKKSjYl1hoL-A
 const DRIVE_FOLDER_ID = process.env.DRIVE_BRAIN_FOLDER_ID || '';
 const SHEET_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
 
+// Neutralize spreadsheet formula injection: a value starting with = + - @ (or a
+// leading control char) is prefixed with a single quote so Sheets treats it as text.
+function sheetSafe(v) {
+  if (typeof v !== 'string') return v;
+  return /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+}
+
 function credsPresent() {
   return !!SHEET_CREDS.client_email;
 }
@@ -87,7 +94,7 @@ async function writeRow(sheets, tab, orderNumber, rowData) {
     spreadsheetId: SHEET_ID,
     range: `${tab}!A${targetRow}`,
     valueInputOption: 'USER_ENTERED',
-    resource: { values: [rowData] },
+    resource: { values: [rowData.map(sheetSafe)] },
   });
   return targetRow;
 }
@@ -134,7 +141,7 @@ async function persistOrder({ payload, docType, pdfBuffer }) {
     const infoIdx = infoOrders.findIndex((o, i) => i > 0 && o === String(orderNumber));
     if (infoIdx < 1) {
       await writeRow(sheets, 'Order Info', orderNumber,
-        [orderNumber, payload.customer_email || '', payload.club || '', payload.ship_date || '', status, '', '', '']);
+        [orderNumber, payload.customer_email || '', payload.club || '', payload.ship_date || '', status, '', '', ''].map(sheetSafe));
     } else if (docType === 'invoice') {
       // Advance status to Awaiting Payment when the invoice is generated.
       await sheets.spreadsheets.values.update({
@@ -167,9 +174,9 @@ async function setOrderStatus({ orderNumber, status, tracking, deliveredDate }) 
     if (idx < 1) return { updated: false, status, skipped: 'order not found' };
     const row = idx + 1;
 
-    const data = [{ range: `Order Info!E${row}`, values: [[status]] }];
-    if (tracking != null && tracking !== '') data.push({ range: `Order Info!F${row}`, values: [[tracking]] });
-    if (deliveredDate != null && deliveredDate !== '') data.push({ range: `Order Info!G${row}`, values: [[deliveredDate]] });
+    const data = [{ range: `Order Info!E${row}`, values: [[sheetSafe(status)]] }];
+    if (tracking != null && tracking !== '') data.push({ range: `Order Info!F${row}`, values: [[sheetSafe(tracking)]] });
+    if (deliveredDate != null && deliveredDate !== '') data.push({ range: `Order Info!G${row}`, values: [[sheetSafe(deliveredDate)]] });
 
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,
