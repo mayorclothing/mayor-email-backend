@@ -4,6 +4,7 @@ const { verifyHubspotSignature } = require('./verifyHubspot');
 const { classifyTriggerEvent, runAction } = require('./hermesService');
 
 const router = express.Router();
+const PUBLIC_URL = process.env.PUBLIC_URL || 'https://mayor-email-backend.onrender.com';
 
 // HubSpot deal-property-change webhook. Sole job: drive the Hermes document /
 // status triggers (OC, Invoice, tracking -> In Transit, delivered -> Delivered).
@@ -20,7 +21,7 @@ router.post('/hubspot', async (req, res, next) => {
 
     const valid = verifyHubspotSignature({
       method: req.method,
-      uri: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+      uri: `${PUBLIC_URL}${req.originalUrl}`,
       rawBody,
       signature,
       timestamp,
