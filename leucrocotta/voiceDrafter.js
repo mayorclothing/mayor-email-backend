@@ -4,7 +4,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const MODEL = 'claude-opus-4-8';
+const MODEL = 'claude-sonnet-5';
 
 function enabled() {
   return !!process.env.ANTHROPIC_API_KEY;
