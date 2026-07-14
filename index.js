@@ -6,6 +6,7 @@ const hermesRoute = require('./hermesRoute');
 const leucrocottaRoute = require('./leucrocottaRoute');
 
 const app = express();
+app.set('trust proxy', 1); // Render terminates TLS; trust X-Forwarded-* so req.protocol is https
 
 app.use(
   express.json({
