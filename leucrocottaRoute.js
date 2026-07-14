@@ -1,5 +1,5 @@
 const express = require('express');
-const { config } = require('./config');
+const { config, timingSafeKeyMatch } = require('./config');
 const { runInboxPoll } = require('./leucrocotta/leucrocottaService');
 
 const router = express.Router();
@@ -7,7 +7,7 @@ const router = express.Router();
 function requireInternalAuth(req, res, next) {
   const header = req.header('Authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
-  if (!config.internalApiKey || token !== config.internalApiKey) {
+  if (!timingSafeKeyMatch(token)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
