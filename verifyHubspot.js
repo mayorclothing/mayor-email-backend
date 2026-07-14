@@ -9,7 +9,7 @@ function verifyHubspotSignature({ method, uri, rawBody, signature, timestamp }) 
   const age = Date.now() - Number(timestamp);
   if (!Number.isFinite(age) || age < 0 || age > REPLAY_WINDOW_MS) return false;
 
-  const base = `${config.hubspot.clientSecret}${method}${uri}${rawBody}${timestamp}`;
+  const base = `${method}${uri}${rawBody}${timestamp}`;
   const expected = crypto.createHmac('sha256', config.hubspot.clientSecret).update(base).digest('base64');
 
   const expectedBuf = Buffer.from(expected);
