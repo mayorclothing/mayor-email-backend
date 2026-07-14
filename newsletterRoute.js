@@ -1,5 +1,5 @@
 const express = require('express');
-const { config, assertConfigured } = require('./config');
+const { config, assertConfigured, timingSafeKeyMatch } = require('./config');
 const { getListMemberEmails } = require('./hubspot');
 const { sendEmail } = require('./resend');
 const { newsletterEmail } = require('./newsletterEmail');
@@ -13,7 +13,7 @@ function requireInternalAuth(req, res, next) {
   const header = req.header('Authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
 
-  if (!config.internalApiKey || token !== config.internalApiKey) {
+  if (!timingSafeKeyMatch(token)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
