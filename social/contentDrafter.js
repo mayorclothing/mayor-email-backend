@@ -5,7 +5,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const MODEL = 'claude-opus-4-8';
+const MODEL = 'claude-sonnet-5';
 
 // Matt's own recurring LinkedIn format (observed across his posts): a one-line
 // hook, the story/club-specific detail, a CTA, then this fixed hashtag core

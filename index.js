@@ -7,8 +7,8 @@ const leucrocottaRoute = require('./leucrocottaRoute');
 const socialRoute = require('./socialRoute');
 
 const app = express();
-
-// Behind Render's proxy: trust the first hop so req.ip/req.protocol are real.
+// Render terminates TLS and sits behind a proxy: trust the first hop so
+// req.ip/req.protocol are real (https), not the internal http hop.
 app.set('trust proxy', 1);
 
 app.use(

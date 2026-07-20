@@ -17,6 +17,13 @@ const SHEET_ID = process.env.MO_SHEET_ID || '152hyxQz87IwPYl2lgBCm6pKKSjYl1hoL-A
 const DRIVE_FOLDER_ID = process.env.DRIVE_BRAIN_FOLDER_ID || '';
 const SHEET_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT || '{}');
 
+// Neutralize spreadsheet formula injection: a value starting with = + - @ (or a
+// leading control char) is prefixed with a single quote so Sheets treats it as text.
+function sheetSafe(v) {
+  if (typeof v !== 'string') return v;
+  return /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+}
+
 function credsPresent() {
   return !!SHEET_CREDS.client_email;
 }
@@ -68,16 +75,6 @@ function buildDetailRow(p, driveLink) {
   ];
 }
 
-// Formula-injection guard: any string starting with = + - @ would be evaluated
-// by Sheets under USER_ENTERED. Prefix with ' (a Sheets text marker — it is not
-// part of the stored value, so portal reads are unchanged).
-function sanitizeCell(v) {
-  return (typeof v === 'string' && /^[=+\-@]/.test(v)) ? `'${v}` : v;
-}
-function sanitizeRow(row) {
-  return row.map(sanitizeCell);
-}
-
 // Upsert keyed on order_number in column A (skip header row 1). Returns 1-based row.
 async function writeRow(sheets, tab, orderNumber, rowData) {
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${tab}!A:A` });
@@ -97,7 +94,7 @@ async function writeRow(sheets, tab, orderNumber, rowData) {
     spreadsheetId: SHEET_ID,
     range: `${tab}!A${targetRow}`,
     valueInputOption: 'USER_ENTERED',
-    resource: { values: [sanitizeRow(rowData)] },
+    resource: { values: [rowData.map(sheetSafe)] },
   });
   return targetRow;
 }
@@ -144,7 +141,7 @@ async function persistOrder({ payload, docType, pdfBuffer }) {
     const infoIdx = infoOrders.findIndex((o, i) => i > 0 && o === String(orderNumber));
     if (infoIdx < 1) {
       await writeRow(sheets, 'Order Info', orderNumber,
-        [orderNumber, payload.customer_email || '', payload.club || '', payload.ship_date || '', status, '', '', '']);
+        [orderNumber, payload.customer_email || '', payload.club || '', payload.ship_date || '', status, '', '', ''].map(sheetSafe));
     } else if (docType === 'invoice') {
       // Advance status to Awaiting Payment when the invoice is generated.
       await sheets.spreadsheets.values.update({
@@ -177,9 +174,9 @@ async function setOrderStatus({ orderNumber, status, tracking, deliveredDate }) 
     if (idx < 1) return { updated: false, status, skipped: 'order not found' };
     const row = idx + 1;
 
-    const data = [{ range: `Order Info!E${row}`, values: [[sanitizeCell(status)]] }];
-    if (tracking != null && tracking !== '') data.push({ range: `Order Info!F${row}`, values: [[sanitizeCell(tracking)]] });
-    if (deliveredDate != null && deliveredDate !== '') data.push({ range: `Order Info!G${row}`, values: [[sanitizeCell(deliveredDate)]] });
+    const data = [{ range: `Order Info!E${row}`, values: [[sheetSafe(status)]] }];
+    if (tracking != null && tracking !== '') data.push({ range: `Order Info!F${row}`, values: [[sheetSafe(tracking)]] });
+    if (deliveredDate != null && deliveredDate !== '') data.push({ range: `Order Info!G${row}`, values: [[sheetSafe(deliveredDate)]] });
 
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,

@@ -1,5 +1,5 @@
 const express = require('express');
-const { config, assertConfigured } = require('./config');
+const { assertConfigured } = require('./config');
 const { getListMemberEmails } = require('./hubspot');
 const { sendEmail } = require('./resend');
 const { newsletterEmail } = require('./newsletterEmail');

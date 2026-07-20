@@ -46,4 +46,15 @@ function assertConfigured(keys) {
   }
 }
 
-module.exports = { config, assertConfigured };
+
+// Timing-safe comparison of a presented bearer token against INTERNAL_API_KEY.
+function timingSafeKeyMatch(token) {
+  const crypto = require('crypto');
+  const expected = config.internalApiKey || '';
+  if (!expected) return false;
+  const a = Buffer.from(String(token || ''));
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+module.exports = { config, assertConfigured, timingSafeKeyMatch };

@@ -20,10 +20,11 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGES = 6;
 
 async function fetchImageBuffer(url) {
+  if (typeof url !== 'string') return null;
   let parsed;
   try { parsed = new URL(url); } catch (e) { return null; }
   if (parsed.protocol !== 'https:') return null;
-  if (!/\.(png|jpg|jpeg|webp)$/i.test(parsed.pathname)) return null;
+  if (!/\.(png|jpe?g|webp)$/i.test(parsed.pathname)) return null;
   try {
     const r = await fetch(parsed.href, { redirect: 'error', signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
