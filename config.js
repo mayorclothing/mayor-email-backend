@@ -21,11 +21,6 @@ const config = {
     name: process.env.BRAND_NAME || 'Mayor Clothing',
     logoUrl: process.env.BRAND_LOGO_URL || '',
   },
-  social: {
-    inboxFolderId: process.env.SOCIAL_INBOX_FOLDER_ID || '',
-    queueSheetId: process.env.SOCIAL_QUEUE_SHEET_ID || '',
-    reviewEmail: process.env.SOCIAL_REVIEW_EMAIL || '',
-  },
 };
 
 function getByPath(obj, path) {

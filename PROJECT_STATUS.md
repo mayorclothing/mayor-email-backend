@@ -12,7 +12,7 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 
 ---
 
-## Three agents inside the backend
+## Two agents inside the backend
 
 - **Hermes** — document + status engine. A HubSpot deal-property change (or the
   hourly poll) triggers: generate Order Confirmation / Invoice PDF → persist to
@@ -21,14 +21,20 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
   each message, and either (a) flips an order to **Pending** when Nickel reports
   payment, or (b) drafts a reply in Mayor's voice for Matt to review, accruing
   per-contact memory in Drive.
-- **Social drafting agent** — twice-weekly poll. Reads new photos from a "Social
-  Inbox" Drive folder, drafts a LinkedIn + Instagram caption grounded in
-  `social/socials-voice.md` (2 years of Matt's actual posts), emails the draft
-  to Matt for review, and logs it to a "Social Queue" sheet. The file is
-  marked drafted (a Drive property) but stays in the Inbox — moving it to
-  "Posted" is a manual step Matt does himself once it's actually live. No
-  direct posting to either platform — also manual, by design (no approved
-  Meta/LinkedIn publishing app).
+
+**Retired: automated social drafting poll.** A twice-weekly `/social/poll`
+cron drafted LinkedIn/Instagram captions unattended from single photos in a
+"Social Inbox" Drive folder. Real use surfaced three problems a batch job
+can't solve: (1) multiple photos from one trip need to become *one* combined
+post, not one-per-photo; (2) good captions need Matt's own input on the
+occasion/context, which means a live conversation, not a fire-and-forget
+email; (3) it needs to actually look at photos (recognize a specific trophy,
+clubhouse, course), not just read a filename. Replaced by a **Claude Project**
+Matt talks to directly — see `social/socials-voice.md` (kept, now the
+Project's core knowledge) and `social/claude-project-instructions.md` (the
+Project's setup doc). All the poller code (`socialRoute.js`,
+`social/socialService.js`, `social/socialDrive.js`, `social/socialQueueSheet.js`,
+`social/emailTemplate.js`, `social/contentDrafter.js`) was removed.
 
 ---
 
@@ -56,13 +62,7 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 - Orchestration: paid → `markPaid`, customer → draft + accrue memory (`leucrocottaService.js`)
 - 15-min Render cron at `/leucrocotta/poll` in `render.yaml`
 
-**Social drafting agent**
-- Drive listing for the Social Inbox, dedup via a `mayor_drafted` file property (`social/socialDrive.js`)
-- Claude caption drafter, LinkedIn + Instagram, grounded in `social/socials-voice.md` (`social/contentDrafter.js`)
-- Review-email formatting (`social/emailTemplate.js`) + Social Queue sheet logging (`social/socialQueueSheet.js`)
-- Orchestration (`social/socialService.js`), twice-weekly Render cron at `/social/poll` in `render.yaml`
-
-**Tests** (files exist): `googleStore.test.js`, `hermesMapping.test.js`, `hermesService.test.js`, `leucrocotta/leucrocotta.test.js`, `social/social.test.js`
+**Tests** (files exist): `googleStore.test.js`, `hermesMapping.test.js`, `hermesService.test.js`, `leucrocotta/leucrocotta.test.js`
 
 **Other repos**: `mayor-invoice` (PDF `/generate` + portal, Render-ready) and `mayor-tools` (browser invoice builder) both functional.
 
@@ -92,11 +92,8 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 **4. Mail sending**
 - Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO`, `BRAND_LOGO_URL`, `INTERNAL_API_KEY`
 
-**4b. Social drafting agent** (reuses the Google creds + `ANTHROPIC_API_KEY` above)
-- Create a Drive folder ("Social Inbox") owned by `mayor@mayorclothing.com`, set `SOCIAL_INBOX_FOLDER_ID` from its URL. No extra sharing needed — the service account already impersonates `mayor@mayorclothing.com` via the same domain-wide delegation Hermes/Leucrocotta use. A "Social Posted" folder is optional and purely manual — Matt drags a file there himself once it's actually live; the code never touches it.
-- Create a new Sheet ("Mayor — Social Queue") with a tab named `Queue`, header row `Date | File | LinkedIn Caption | Instagram Caption | Status`. Set `SOCIAL_QUEUE_SHEET_ID` from its URL.
-- Set `SOCIAL_REVIEW_EMAIL` to wherever drafts should land (Matt's inbox).
-- Without these three, `/social/poll` returns `skipped` (green by design).
+**4b. Social content (Claude Project, not this backend)**
+- See `social/claude-project-instructions.md` for the setup checklist. Nothing to configure here — it's a Claude.ai Project Matt talks to directly, using `social/socials-voice.md` as its knowledge and the Social Inbox/Posted Drive folders (already created; folder IDs in that doc).
 
 **5. Deploy** — ✅ Done
 - Live on Render (web + `hermes-poll` + `leucrocotta-poll` crons). `INTERNAL_API_KEY` set identically across all three; crons authenticate (200).

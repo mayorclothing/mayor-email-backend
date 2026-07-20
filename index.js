@@ -4,7 +4,6 @@ const webhookRoute = require('./webhookRoute');
 const newsletterRoute = require('./newsletterRoute');
 const hermesRoute = require('./hermesRoute');
 const leucrocottaRoute = require('./leucrocottaRoute');
-const socialRoute = require('./socialRoute');
 
 const app = express();
 // Render terminates TLS and sits behind a proxy: trust the first hop so
@@ -27,7 +26,6 @@ app.use('/webhooks', webhookRoute);
 app.use('/newsletter', newsletterRoute);
 app.use('/hermes', hermesRoute);
 app.use('/leucrocotta', leucrocottaRoute);
-app.use('/social', socialRoute);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
