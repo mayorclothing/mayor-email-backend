@@ -1,7 +1,9 @@
 // Drive access for the social drafting agent: lists new photos/graphics dropped
-// in the "Social Inbox" folder, and moves each to the "Posted" folder once a
-// draft has gone out — that move IS the dedup mechanism (no separate tracking
-// needed). Guarded: no creds / no inbox folder => enabled() false, callers skip.
+// in the "Social Inbox" folder. Dedup is a private Drive `properties` flag
+// (mayor_drafted) set on each file once drafted — NOT a folder move. Files stay
+// in the Inbox until Matt actually posts them and moves them to Posted himself;
+// this code never touches that folder. Guarded: no creds / no inbox folder =>
+// enabled() false, callers skip.
 //
 // Mirrors leucrocotta/driveMemory.js's own JWT setup rather than importing it —
 // same duplication the codebase already accepts there (see driveMemory.js's
@@ -10,11 +12,10 @@
 const { google } = require('googleapis');
 
 const INBOX_FOLDER_ID = process.env.SOCIAL_INBOX_FOLDER_ID || '';
-const POSTED_FOLDER_ID = process.env.SOCIAL_POSTED_FOLDER_ID || '';
 const CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT || '{}');
 
 function enabled() {
-  return !!(CREDS.client_email && INBOX_FOLDER_ID && POSTED_FOLDER_ID);
+  return !!(CREDS.client_email && INBOX_FOLDER_ID);
 }
 
 function getDrive() {
@@ -30,28 +31,28 @@ function getDrive() {
 // Team drops a photo in the inbox folder and (optionally) sets its Drive
 // "description" field to a short note — club/event/print detail — which the
 // drafter uses as its main source of truth. No note => drafter flags it in the
-// review email instead of inventing details.
+// review email instead of inventing details. Already-drafted files (marked via
+// markDrafted) are excluded so a poll never re-drafts the same photo.
 async function listInboxFiles() {
   if (!enabled()) return [];
   const drive = getDrive();
   const res = await drive.files.list({
-    q: `'${INBOX_FOLDER_ID}' in parents and trashed = false`,
+    q: `'${INBOX_FOLDER_ID}' in parents and trashed = false and not properties has { key='mayor_drafted' and value='true' }`,
     fields: 'files(id, name, description, webViewLink)',
     pageSize: 25,
   });
   return res.data.files || [];
 }
 
-async function markProcessed(fileId) {
+async function markDrafted(fileId) {
   if (!enabled()) return false;
   const drive = getDrive();
   await drive.files.update({
     fileId,
-    addParents: POSTED_FOLDER_ID,
-    removeParents: INBOX_FOLDER_ID,
-    fields: 'id, parents',
+    requestBody: { properties: { mayor_drafted: 'true' } },
+    fields: 'id',
   });
   return true;
 }
 
-module.exports = { enabled, listInboxFiles, markProcessed };
+module.exports = { enabled, listInboxFiles, markDrafted };

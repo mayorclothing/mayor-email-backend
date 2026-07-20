@@ -23,7 +23,6 @@ const config = {
   },
   social: {
     inboxFolderId: process.env.SOCIAL_INBOX_FOLDER_ID || '',
-    postedFolderId: process.env.SOCIAL_POSTED_FOLDER_ID || '',
     queueSheetId: process.env.SOCIAL_QUEUE_SHEET_ID || '',
     reviewEmail: process.env.SOCIAL_REVIEW_EMAIL || '',
   },

@@ -1,7 +1,8 @@
 // Social drafting orchestration: for each new file in the Social Inbox Drive
 // folder, draft LinkedIn + Instagram captions in Matt's voice, email them to
-// him for review, log the draft to the Social Queue sheet, then move the file
-// to Posted (that move is the dedup — no separate "seen" tracking needed).
+// him for review, log the draft to the Social Queue sheet, then mark the file
+// drafted (a Drive property, not a folder move — see socialDrive.js). The file
+// stays in the Inbox; Matt moves it to Posted himself once it's actually live.
 //
 // No direct publishing to LinkedIn/Instagram — deliberately out of scope
 // (see plan: no approved Meta/LinkedIn app). Matt reviews and posts by hand.
@@ -35,7 +36,7 @@ async function draftOne(file) {
     });
   }
 
-  await drive.markProcessed(file.id);
+  await drive.markDrafted(file.id);
   return { action: 'social_draft', file: file.name, drafted: true };
 }
 

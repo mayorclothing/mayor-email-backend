@@ -30,8 +30,6 @@ services:
         sync: false
       - key: SOCIAL_INBOX_FOLDER_ID
         sync: false
-      - key: SOCIAL_POSTED_FOLDER_ID
-        sync: false
       - key: SOCIAL_QUEUE_SHEET_ID
         sync: false
       - key: SOCIAL_REVIEW_EMAIL

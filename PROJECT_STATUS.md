@@ -22,10 +22,12 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
   payment, or (b) drafts a reply in Mayor's voice for Matt to review, accruing
   per-contact memory in Drive.
 - **Social drafting agent** — twice-weekly poll. Reads new photos from a "Social
-  Inbox" Drive folder, drafts a LinkedIn + Instagram caption in Matt's voice
-  (same `voice.md` brain as Leucrocotta), emails the draft to Matt for review,
-  logs it to a "Social Queue" sheet, and moves the file to "Posted." No direct
-  posting to either platform — that's a manual step by design (no approved
+  Inbox" Drive folder, drafts a LinkedIn + Instagram caption grounded in
+  `social/socials-voice.md` (2 years of Matt's actual posts), emails the draft
+  to Matt for review, and logs it to a "Social Queue" sheet. The file is
+  marked drafted (a Drive property) but stays in the Inbox — moving it to
+  "Posted" is a manual step Matt does himself once it's actually live. No
+  direct posting to either platform — also manual, by design (no approved
   Meta/LinkedIn publishing app).
 
 ---
@@ -55,8 +57,8 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 - 15-min Render cron at `/leucrocotta/poll` in `render.yaml`
 
 **Social drafting agent**
-- Drive listing/move for the Social Inbox → Posted flow (`social/socialDrive.js`)
-- Claude caption drafter, LinkedIn + Instagram, built on Matt's proven format (`social/contentDrafter.js`)
+- Drive listing for the Social Inbox, dedup via a `mayor_drafted` file property (`social/socialDrive.js`)
+- Claude caption drafter, LinkedIn + Instagram, grounded in `social/socials-voice.md` (`social/contentDrafter.js`)
 - Review-email formatting (`social/emailTemplate.js`) + Social Queue sheet logging (`social/socialQueueSheet.js`)
 - Orchestration (`social/socialService.js`), twice-weekly Render cron at `/social/poll` in `render.yaml`
 
@@ -91,7 +93,7 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 - Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO`, `BRAND_LOGO_URL`, `INTERNAL_API_KEY`
 
 **4b. Social drafting agent** (reuses the Google creds + `ANTHROPIC_API_KEY` above)
-- Create two Drive folders ("Social Inbox", "Social Posted") owned by `mayor@mayorclothing.com`, set `SOCIAL_INBOX_FOLDER_ID` / `SOCIAL_POSTED_FOLDER_ID` from their URLs. No extra sharing needed — the service account already impersonates `mayor@mayorclothing.com` via the same domain-wide delegation Hermes/Leucrocotta use.
+- Create a Drive folder ("Social Inbox") owned by `mayor@mayorclothing.com`, set `SOCIAL_INBOX_FOLDER_ID` from its URL. No extra sharing needed — the service account already impersonates `mayor@mayorclothing.com` via the same domain-wide delegation Hermes/Leucrocotta use. A "Social Posted" folder is optional and purely manual — Matt drags a file there himself once it's actually live; the code never touches it.
 - Create a new Sheet ("Mayor — Social Queue") with a tab named `Queue`, header row `Date | File | LinkedIn Caption | Instagram Caption | Status`. Set `SOCIAL_QUEUE_SHEET_ID` from its URL.
 - Set `SOCIAL_REVIEW_EMAIL` to wherever drafts should land (Matt's inbox).
 - Without these three, `/social/poll` returns `skipped` (green by design).

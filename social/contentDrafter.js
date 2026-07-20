@@ -1,43 +1,40 @@
 // Drafts LinkedIn + Instagram captions for a new social-inbox photo, in Matt's
-// established voice. Mirrors leucrocotta/voiceDrafter.js's shape (same model,
-// same enabled() guard, same "write as Matt in first person" framing) but for
-// social captions instead of email replies.
+// voice. Mirrors leucrocotta/voiceDrafter.js's shape (same model, same
+// enabled() guard) but grounds the draft in socials-voice.md — a reference
+// built from ~2 years of Matt's actual posts (see that file's own history/
+// provenance notes). That file, not this prompt, is the source of truth for
+// what Matt's voice actually is; don't re-describe it here, just point at it.
 
+const fs = require('fs');
+const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const MODEL = 'claude-sonnet-5';
-
-// Matt's own recurring LinkedIn format (observed across his posts): a one-line
-// hook, the story/club-specific detail, a CTA, then this fixed hashtag core
-// plus 1-2 location/event tags. Keep both platforms on this same backbone so
-// LinkedIn and Instagram read as one consistent voice.
-const CORE_HASHTAGS = '#GolfTournaments #PrivateClubs #CustomGolfApparel #GolfEvents #GolfProShop';
+const VOICE_REFERENCE = fs.readFileSync(path.join(__dirname, 'socials-voice.md'), 'utf8');
 
 function enabled() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-const SYSTEM = `You are Matt Bartini, founder and CEO of Mayor, a custom-print golf-apparel company. You are drafting social captions in your OWN voice — first person always, never third person ("Matt did X").
+const SYSTEM = `You are Matt Bartini, founder and CEO of Mayor, drafting social captions in your OWN voice — always first person, never third person ("Matt did X").
 
-Matt's proven LinkedIn format, which these drafts must follow:
-1. One-line hook naming the club/group and what was made.
-2. The story: a specific design detail (colors, icons, milestone, course feature) and who it was made with/for.
-3. A CTA inviting the reader to message him for their own custom print.
-4. Hashtags: always include "${CORE_HASHTAGS}", plus 1-3 more specific to the location/event if known.
+Below is a reference built from 2+ years of your actual LinkedIn and Instagram posts, including a "GOING FORWARD" standard for Instagram that supersedes its own historical section — read the file's own framing carefully and follow whichever section it says is current, not whichever is easiest to skim.
 
-Do not invent facts. Use only what's in the note provided. If no note was given, keep the caption short and general (e.g. celebrate the piece itself) and do NOT fabricate a club name, story, or date — leave it clearly generic so Matt can add specifics before posting.
+--- VOICE REFERENCE (source of truth) ---
+${VOICE_REFERENCE}
+--- END VOICE REFERENCE ---
 
-Write two versions:
-- "linkedin": Matt's full format above, 3-6 sentences plus hashtags — matches his existing LinkedIn posts.
-- "instagram": a tighter version of the same story (1-3 sentences), same hashtags, IG-appropriate brevity.
+Do not invent facts beyond what's given in the note below. If no note is given, use the terse/no-story register (Template B or C) on both platforms rather than fabricating a club name, story, or date.
 
-Return ONLY compact JSON: {"linkedin":"<full text with hashtags>","instagram":"<full text with hashtags>"}. No text outside the JSON.`;
+Return ONLY compact JSON: {"linkedin":"<full text>","instagram":"<full text>"}. No text outside the JSON.`;
 
 // { voice, fileName, description } -> { linkedin, instagram }
+// `voice` is the separate email-voice memory (leucrocotta/driveMemory.js) —
+// optional extra color, not a substitute for the socials-specific reference.
 async function draftPost({ voice = '', fileName = '', description = '' }) {
   const client = new Anthropic(); // resolves ANTHROPIC_API_KEY from env
 
-  const system = voice ? `${SYSTEM}\n\n--- MAYOR VOICE & STYLE NOTES ---\n${voice}` : SYSTEM;
+  const system = voice ? `${SYSTEM}\n\n--- ADDITIONAL NOTES FROM MATT'S EMAIL-VOICE MEMORY ---\n${voice}` : SYSTEM;
   const userMsg = description
     ? `Photo: ${fileName}\nNote from the team: ${description}`
     : `Photo: ${fileName}\n(No note attached — no club/event details are known.)`;
@@ -58,4 +55,4 @@ async function draftPost({ voice = '', fileName = '', description = '' }) {
   }
 }
 
-module.exports = { enabled, draftPost, CORE_HASHTAGS };
+module.exports = { enabled, draftPost };
