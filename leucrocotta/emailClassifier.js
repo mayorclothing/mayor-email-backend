@@ -6,9 +6,26 @@
 
 const { parseNickelPaid } = require('./nickelParser');
 
-function senderMatches(from, sender) {
+// "Matt Bartini <mayor@x.com>" -> "mayor@x.com". Exact-address extraction so a
+// display name like "support@nickel.com <evil@x.com>" can't impersonate a sender.
+function extractAddress(from) {
+  const m = String(from).match(/<([^>]+)>/);
+  return (m ? m[1] : String(from)).trim().toLowerCase();
+}
+
+function senderIs(from, sender) {
   if (!from || !sender) return false;
-  return from.toLowerCase().includes(sender.toLowerCase());
+  return extractAddress(from) === String(sender).trim().toLowerCase();
+}
+
+// Gmail stamps Authentication-Results on inbound mail. For the Nickel paid path
+// (it flips order status) also require DKIM pass for the sender's domain when
+// the header is present; absent header (e.g. unit tests) falls back to the
+// exact-address match alone.
+function dkimPasses(authResults, senderDomain) {
+  if (!authResults) return true;
+  const a = String(authResults).toLowerCase();
+  return /dkim=pass/.test(a) && a.includes(senderDomain.toLowerCase());
 }
 
 // Machine/no-reply senders we never draft a human reply to.
@@ -17,15 +34,18 @@ const AUTOMATED = [
   /postmaster@/i, /@.*\.hubspot/i, /calendar-notification/i, /automated/i,
 ];
 
-// { from, subject, text }, opts { nickelSender, selfAddresses: [] }
-function classifyEmail({ from = '', subject = '', text = '' } = {}, opts = {}) {
+// { from, subject, text, authResults }, opts { nickelSender, selfAddresses: [] }
+function classifyEmail({ from = '', subject = '', text = '', authResults = '' } = {}, opts = {}) {
   const { nickelSender = '', selfAddresses = [] } = opts;
 
   // Our own outbound / bounces — never act.
-  if (selfAddresses.some((self) => senderMatches(from, self))) return 'ignore';
+  if (selfAddresses.some((self) => senderIs(from, self))) return 'ignore';
 
-  // Nickel payment notification -> deterministic paid path.
-  if (senderMatches(from, nickelSender)) {
+  // Nickel payment notification -> deterministic paid path. Exact envelope
+  // address + DKIM (when available) — display-name spoofing must not reach here.
+  if (senderIs(from, nickelSender)) {
+    const domain = String(nickelSender).split('@')[1] || '';
+    if (!dkimPasses(authResults, domain)) return 'ignore';
     const { isPaid } = parseNickelPaid({ subject, text });
     return isPaid ? 'nickel_paid' : 'ignore';
   }
@@ -38,4 +58,4 @@ function classifyEmail({ from = '', subject = '', text = '' } = {}, opts = {}) {
   return 'ignore';
 }
 
-module.exports = { classifyEmail };
+module.exports = { classifyEmail, extractAddress };

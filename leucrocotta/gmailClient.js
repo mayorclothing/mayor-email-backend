@@ -7,7 +7,7 @@
 const { google } = require('googleapis');
 
 const GMAIL_USER = process.env.GMAIL_USER || 'mayor@mayorclothing.com';
-const CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
+const CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT || '{}');
 const SCOPES = ['https://www.googleapis.com/auth/gmail.modify'];
 
 function enabled() {
@@ -62,6 +62,7 @@ async function getMessage(id) {
     from: header(m.payload, 'From'),
     subject: header(m.payload, 'Subject'),
     text: extractBody(m.payload) || m.snippet || '',
+    authResults: header(m.payload, 'Authentication-Results'),
   };
 }
 

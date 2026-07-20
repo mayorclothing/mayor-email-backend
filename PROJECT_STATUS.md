@@ -12,7 +12,7 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 
 ---
 
-## Two agents inside the backend
+## Three agents inside the backend
 
 - **Hermes** — document + status engine. A HubSpot deal-property change (or the
   hourly poll) triggers: generate Order Confirmation / Invoice PDF → persist to
@@ -21,6 +21,12 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
   each message, and either (a) flips an order to **Pending** when Nickel reports
   payment, or (b) drafts a reply in Mayor's voice for Matt to review, accruing
   per-contact memory in Drive.
+- **Social drafting agent** — twice-weekly poll. Reads new photos from a "Social
+  Inbox" Drive folder, drafts a LinkedIn + Instagram caption in Matt's voice
+  (same `voice.md` brain as Leucrocotta), emails the draft to Matt for review,
+  logs it to a "Social Queue" sheet, and moves the file to "Posted." No direct
+  posting to either platform — that's a manual step by design (no approved
+  Meta/LinkedIn publishing app).
 
 ---
 
@@ -48,7 +54,13 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 - Orchestration: paid → `markPaid`, customer → draft + accrue memory (`leucrocottaService.js`)
 - 15-min Render cron at `/leucrocotta/poll` in `render.yaml`
 
-**Tests** (files exist): `googleStore.test.js`, `hermesMapping.test.js`, `hermesService.test.js`, `leucrocotta/leucrocotta.test.js`
+**Social drafting agent**
+- Drive listing/move for the Social Inbox → Posted flow (`social/socialDrive.js`)
+- Claude caption drafter, LinkedIn + Instagram, built on Matt's proven format (`social/contentDrafter.js`)
+- Review-email formatting (`social/emailTemplate.js`) + Social Queue sheet logging (`social/socialQueueSheet.js`)
+- Orchestration (`social/socialService.js`), twice-weekly Render cron at `/social/poll` in `render.yaml`
+
+**Tests** (files exist): `googleStore.test.js`, `hermesMapping.test.js`, `hermesService.test.js`, `leucrocotta/leucrocotta.test.js`, `social/social.test.js`
 
 **Other repos**: `mayor-invoice` (PDF `/generate` + portal, Render-ready) and `mayor-tools` (browser invoice builder) both functional.
 
@@ -77,6 +89,12 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 
 **4. Mail sending**
 - Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO`, `BRAND_LOGO_URL`, `INTERNAL_API_KEY`
+
+**4b. Social drafting agent** (reuses the Google creds + `ANTHROPIC_API_KEY` above)
+- Create two Drive folders ("Social Inbox", "Social Posted") owned by `mayor@mayorclothing.com`, set `SOCIAL_INBOX_FOLDER_ID` / `SOCIAL_POSTED_FOLDER_ID` from their URLs. No extra sharing needed — the service account already impersonates `mayor@mayorclothing.com` via the same domain-wide delegation Hermes/Leucrocotta use.
+- Create a new Sheet ("Mayor — Social Queue") with a tab named `Queue`, header row `Date | File | LinkedIn Caption | Instagram Caption | Status`. Set `SOCIAL_QUEUE_SHEET_ID` from its URL.
+- Set `SOCIAL_REVIEW_EMAIL` to wherever drafts should land (Matt's inbox).
+- Without these three, `/social/poll` returns `skipped` (green by design).
 
 **5. Deploy** — ✅ Done
 - Live on Render (web + `hermes-poll` + `leucrocotta-poll` crons). `INTERNAL_API_KEY` set identically across all three; crons authenticate (200).

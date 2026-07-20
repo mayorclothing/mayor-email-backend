@@ -28,6 +28,14 @@ services:
         value: Mayor Clothing
       - key: BRAND_LOGO_URL
         sync: false
+      - key: SOCIAL_INBOX_FOLDER_ID
+        sync: false
+      - key: SOCIAL_POSTED_FOLDER_ID
+        sync: false
+      - key: SOCIAL_QUEUE_SHEET_ID
+        sync: false
+      - key: SOCIAL_REVIEW_EMAIL
+        sync: false
 
   # Hourly safety-net poll: reconciles HubSpot trigger flags via /hermes/poll.
   # Curls the web service so all HubSpot/Google secrets stay there — the cron
@@ -52,6 +60,19 @@ services:
     schedule: "*/15 * * * *"
     buildCommand: "true"
     startCommand: 'curl -fsS -X POST "https://mayor-email-backend.onrender.com/leucrocotta/poll" -H "Authorization: Bearer $INTERNAL_API_KEY"'
+    envVars:
+      - key: INTERNAL_API_KEY
+        sync: false
+
+  # Social drafting poll: draft LinkedIn/IG captions for new Social Inbox
+  # photos and email them to Matt for review. Twice weekly (Tue & Fri).
+  - type: cron
+    name: social-poll
+    runtime: node
+    plan: starter
+    schedule: "0 15 * * 2,5"
+    buildCommand: "true"
+    startCommand: 'curl -fsS -X POST "https://mayor-email-backend.onrender.com/social/poll" -H "Authorization: Bearer $INTERNAL_API_KEY"'
     envVars:
       - key: INTERNAL_API_KEY
         sync: false

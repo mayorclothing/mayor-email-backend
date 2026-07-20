@@ -20,7 +20,7 @@ router.post('/hubspot', async (req, res, next) => {
 
     const valid = verifyHubspotSignature({
       method: req.method,
-      uri: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+      uri: `${config.publicBaseUrl}${req.originalUrl}`,
       rawBody,
       signature,
       timestamp,

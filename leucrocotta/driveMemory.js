@@ -10,7 +10,7 @@ const { google } = require('googleapis');
 const { Readable } = require('stream');
 
 const FOLDER_ID = process.env.DRIVE_BRAIN_FOLDER_ID || '';
-const CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
+const CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT || '{}');
 
 function enabled() {
   return !!(CREDS.client_email && FOLDER_ID);

@@ -4,8 +4,12 @@ const webhookRoute = require('./webhookRoute');
 const newsletterRoute = require('./newsletterRoute');
 const hermesRoute = require('./hermesRoute');
 const leucrocottaRoute = require('./leucrocottaRoute');
+const socialRoute = require('./socialRoute');
 
 const app = express();
+
+// Behind Render's proxy: trust the first hop so req.ip/req.protocol are real.
+app.set('trust proxy', 1);
 
 app.use(
   express.json({
@@ -23,6 +27,7 @@ app.use('/webhooks', webhookRoute);
 app.use('/newsletter', newsletterRoute);
 app.use('/hermes', hermesRoute);
 app.use('/leucrocotta', leucrocottaRoute);
+app.use('/social', socialRoute);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });

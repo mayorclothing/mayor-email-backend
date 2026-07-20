@@ -1,17 +1,9 @@
 const express = require('express');
 const { config, assertConfigured } = require('./config');
 const { generateDocument, runPoll } = require('./hermesService');
+const { requireInternalAuth } = require('./internalAuth');
 
 const router = express.Router();
-
-function requireInternalAuth(req, res, next) {
-  const header = req.header('Authorization') || '';
-  const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
-  if (!config.internalApiKey || token !== config.internalApiKey) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-}
 
 // POST /hermes/generate  { dealId, docType: 'order_confirmation'|'invoice' }
 // Renders the OC/Invoice PDF from live HubSpot deal props, persists to Drive +

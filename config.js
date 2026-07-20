@@ -3,6 +3,9 @@ require('dotenv').config();
 const config = {
   port: process.env.PORT || 3000,
   internalApiKey: process.env.INTERNAL_API_KEY || '',
+  // Public URL of this service, used to build the exact URI HubSpot signed.
+  // Never derive it from the Host header — that's attacker-influenced.
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || 'https://mayor-email-backend.onrender.com',
   hubspot: {
     token: process.env.HUBSPOT_TOKEN || '',
     clientSecret: process.env.HUBSPOT_CLIENT_SECRET || '',
@@ -17,6 +20,12 @@ const config = {
     accentColor: process.env.BRAND_ACCENT_COLOR || '#1a1a1a',
     name: process.env.BRAND_NAME || 'Mayor Clothing',
     logoUrl: process.env.BRAND_LOGO_URL || '',
+  },
+  social: {
+    inboxFolderId: process.env.SOCIAL_INBOX_FOLDER_ID || '',
+    postedFolderId: process.env.SOCIAL_POSTED_FOLDER_ID || '',
+    queueSheetId: process.env.SOCIAL_QUEUE_SHEET_ID || '',
+    reviewEmail: process.env.SOCIAL_REVIEW_EMAIL || '',
   },
 };
 

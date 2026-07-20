@@ -15,7 +15,7 @@ const { Readable } = require('stream');
 
 const SHEET_ID = process.env.MO_SHEET_ID || '152hyxQz87IwPYl2lgBCm6pKKSjYl1hoL-AuZu-wODbo';
 const DRIVE_FOLDER_ID = process.env.DRIVE_BRAIN_FOLDER_ID || '';
-const SHEET_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
+const SHEET_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT || '{}');
 
 function credsPresent() {
   return !!SHEET_CREDS.client_email;
@@ -68,6 +68,16 @@ function buildDetailRow(p, driveLink) {
   ];
 }
 
+// Formula-injection guard: any string starting with = + - @ would be evaluated
+// by Sheets under USER_ENTERED. Prefix with ' (a Sheets text marker — it is not
+// part of the stored value, so portal reads are unchanged).
+function sanitizeCell(v) {
+  return (typeof v === 'string' && /^[=+\-@]/.test(v)) ? `'${v}` : v;
+}
+function sanitizeRow(row) {
+  return row.map(sanitizeCell);
+}
+
 // Upsert keyed on order_number in column A (skip header row 1). Returns 1-based row.
 async function writeRow(sheets, tab, orderNumber, rowData) {
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${tab}!A:A` });
@@ -87,7 +97,7 @@ async function writeRow(sheets, tab, orderNumber, rowData) {
     spreadsheetId: SHEET_ID,
     range: `${tab}!A${targetRow}`,
     valueInputOption: 'USER_ENTERED',
-    resource: { values: [rowData] },
+    resource: { values: [sanitizeRow(rowData)] },
   });
   return targetRow;
 }
@@ -167,9 +177,9 @@ async function setOrderStatus({ orderNumber, status, tracking, deliveredDate }) 
     if (idx < 1) return { updated: false, status, skipped: 'order not found' };
     const row = idx + 1;
 
-    const data = [{ range: `Order Info!E${row}`, values: [[status]] }];
-    if (tracking != null && tracking !== '') data.push({ range: `Order Info!F${row}`, values: [[tracking]] });
-    if (deliveredDate != null && deliveredDate !== '') data.push({ range: `Order Info!G${row}`, values: [[deliveredDate]] });
+    const data = [{ range: `Order Info!E${row}`, values: [[sanitizeCell(status)]] }];
+    if (tracking != null && tracking !== '') data.push({ range: `Order Info!F${row}`, values: [[sanitizeCell(tracking)]] });
+    if (deliveredDate != null && deliveredDate !== '') data.push({ range: `Order Info!G${row}`, values: [[sanitizeCell(deliveredDate)]] });
 
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,

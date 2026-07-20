@@ -3,22 +3,12 @@ const { config, assertConfigured } = require('./config');
 const { getListMemberEmails } = require('./hubspot');
 const { sendEmail } = require('./resend');
 const { newsletterEmail } = require('./newsletterEmail');
+const { requireInternalAuth } = require('./internalAuth');
 
 const router = express.Router();
 
 const BATCH_SIZE = 50;
 const BATCH_DELAY_MS = 1000;
-
-function requireInternalAuth(req, res, next) {
-  const header = req.header('Authorization') || '';
-  const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
-
-  if (!config.internalApiKey || token !== config.internalApiKey) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  next();
-}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

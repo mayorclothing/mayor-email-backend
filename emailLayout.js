@@ -1,5 +1,13 @@
 const { config } = require('./config');
 
+// Escape text destined for HTML — bodyHtml is the only slot that accepts markup,
+// and its builders escape their own user data.
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function layout({ preheader = '', bodyHtml = '', ctaLabel, ctaUrl }) {
   const logo = config.brand.logoUrl
     ? `<img src="${config.brand.logoUrl}" alt="${config.brand.name}" style="height:32px;margin-bottom:24px;" />`
@@ -7,7 +15,7 @@ function layout({ preheader = '', bodyHtml = '', ctaLabel, ctaUrl }) {
 
   const cta = ctaLabel && ctaUrl
     ? `<tr><td style="padding-top:28px;">
-        <a href="${ctaUrl}" style="background:${config.brand.accentColor};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;display:inline-block;">${ctaLabel}</a>
+        <a href="${esc(ctaUrl)}" style="background:${config.brand.accentColor};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;display:inline-block;">${esc(ctaLabel)}</a>
       </td></tr>`
     : '';
 
@@ -19,7 +27,7 @@ function layout({ preheader = '', bodyHtml = '', ctaLabel, ctaUrl }) {
     <title>${config.brand.name}</title>
   </head>
   <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
-    <span style="display:none;max-height:0;overflow:hidden;">${preheader}</span>
+    <span style="display:none;max-height:0;overflow:hidden;">${esc(preheader)}</span>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
       <tr>
         <td align="center">

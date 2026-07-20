@@ -4,19 +4,13 @@
 
 const { config } = require('../config');
 const { markPaid } = require('../hermesService');
-const { classifyEmail } = require('./emailClassifier');
+const { classifyEmail, extractAddress } = require('./emailClassifier');
 const { parseNickelPaid } = require('./nickelParser');
 const gmail = require('./gmailClient');
 const memory = require('./driveMemory');
 const drafter = require('./voiceDrafter');
 
 const NICKEL_SENDER = process.env.NICKEL_SENDER || 'support@nickel.com';
-
-// "Matt Bartini <mayor@x.com>" -> "mayor@x.com"
-function extractAddress(from) {
-  const m = String(from).match(/<([^>]+)>/);
-  return (m ? m[1] : from).trim().toLowerCase();
-}
 
 async function handleNickelPaid(msg) {
   const { orderNumber } = parseNickelPaid(msg);
