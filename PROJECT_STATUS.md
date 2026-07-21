@@ -6,7 +6,7 @@ docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
 
 | Repo | What it is | State |
 |------|------------|-------|
-| `mayor-email-backend` | The agent backend (Express on Render). Webhooks, Hermes doc engine, Leucrocotta inbox agent, newsletter. | **Deployed & live** at `mayor-email-backend.onrender.com`; both poll crons authenticating. Still needs HubSpot + Google config to do real work. |
+| `mayor-email-backend` | The agent backend (Express on Render). Webhooks, Hermes doc engine, Leucrocotta inbox agent, newsletter. | **Live and doing real work.** HubSpot + Google config confirmed set on Render (2026-07-21); `hermes-poll` is generating real OC/invoice PDFs every hourly run, `leucrocotta-poll` runs clean every 15 min. |
 | `mayor-invoice` | Standalone server that renders invoice PDFs from a JSON/HubSpot payload + a customer order portal. | Working, deployable |
 | `mayor-tools` | Single-file browser tool (`index.html`) for building invoices by hand. | Working |
 
@@ -68,46 +68,23 @@ Project's setup doc). All the poller code (`socialRoute.js`,
 
 ---
 
-## ⬜ To do (before this runs in production)
+## ✅ Config — confirmed live (verified via Render API, 2026-07-21)
 
-**1. HubSpot configuration (blocks the whole trigger path)**
-- Manually create the four trigger properties on Deals — until they exist, webhooks and the poll silently no-op:
-  - `zc_trigger_oc` (bool) — fire Order Confirmation
-  - `zd_trigger_invoice` (bool) — fire Invoice
-  - `zg_tracking_number` (text) — → In Transit
-  - `zf_delivered_date` (date) — → Delivered
-- Create the private app, grab `HUBSPOT_TOKEN` + `HUBSPOT_CLIENT_SECRET`, set `HUBSPOT_ORDER_DEAL_STAGE`
-- Register the webhook subscription (`deal.propertyChange`) pointing at `/webhooks/hubspot`
+**1. HubSpot** — `HUBSPOT_TOKEN` + `HUBSPOT_CLIENT_SECRET` set on Render. `hermes-poll` runs are producing real results (e.g. `{"ok":true,"counts":{"generate_oc":2,"generate_invoice":1,...,"errors":0}}` every hourly run) — trigger properties, private app, and webhook are working. `HUBSPOT_ORDER_DEAL_STAGE` was not found in the Render env list; poll is working anyway, so either it's unused in the live code path or has a working default — not investigated further.
 
-**2. Google access (blocks all persistence + memory)**
-- Create a service account, set `GOOGLE_SERVICE_ACCOUNT_JSON`. Without it Hermes still renders but reports `persisted:false` and nothing lands in Drive/the sheet.
-- Grant **domain-wide delegation** (`gmail.modify`) for `GMAIL_USER` — Leucrocotta can't read/draft mail otherwise
-- Set `DRIVE_BRAIN_FOLDER_ID` (Drive folder for docs + memory). `MO_SHEET_ID` is already defaulted.
+**2. Google** — `GOOGLE_SERVICE_ACCOUNT_JSON` and `DRIVE_BRAIN_FOLDER_ID` set. `GMAIL_USER` is not set on Render but doesn't need to be — `gmailClient.js:9` defaults it to `mayor@mayorclothing.com`, and `enabled()` only checks for service-account creds (present). Leucrocotta is actually querying Gmail (`in:inbox is:unread newer_than:2d`) every 15 min; `results: []` in the logs means no matching unread mail at that moment, not that it's disabled.
 
-**3. Claude + Nickel**
-- Set `ANTHROPIC_API_KEY` — without it Leucrocotta classifies but won't draft replies
-- `NICKEL_SENDER` now defaults to `support@nickel.com` (the real address); only set the env var to override.
-- ~~Tune `nickelParser.js` regexes against a real Nickel email.~~ **Done** — tuned against real `support@nickel.com` mail: extracts the order ref from the `Payment of $X for <ref> from <payer>` phrase (subject + body) with the labeled `Order Reference` field as backstop, handles numeric refs, club-name refs, empty refs, and bank-payout emails. Covered by `leucrocotta.test.js`.
+**3. Claude + Nickel** — `ANTHROPIC_API_KEY` set. `nickelParser.js` tuned against real `support@nickel.com` mail (order ref via `Payment of $X for <ref> from <payer>` phrase + `Order Reference` field backstop), covered by `leucrocotta.test.js`.
 
-**4. Mail sending**
-- Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO`, `BRAND_LOGO_URL`, `INTERNAL_API_KEY`
+**4. Mail sending** — `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO`, `BRAND_LOGO_URL`, `INTERNAL_API_KEY` all set.
 
-**4b. Social content (Claude Project, not this backend)**
-- See `social/claude-project-instructions.md` for the setup checklist. Nothing to configure here — it's a Claude.ai Project Matt talks to directly, using `social/socials-voice.md` as its knowledge and the Social Inbox/Posted Drive folders (already created; folder IDs in that doc).
+**4b. Social content (Claude Project, not this backend)** — see `social/claude-project-instructions.md`. Note: the retired `social-poll` Render cron job (twice-weekly, hits the now-deleted `/social/poll` route) is still provisioned on Render — should be deleted, it'll just 404 when it fires.
 
-**5. Deploy** — ✅ Done
-- Live on Render (web + `hermes-poll` + `leucrocotta-poll` crons). `INTERNAL_API_KEY` set identically across all three; crons authenticate (200).
-- `/health` verified 200. `hermes-poll` returns `200 skipped` until `HUBSPOT_TOKEN` is set; `leucrocotta-poll` returns `200 skipped` until Gmail creds are set — both green by design.
-- Remaining smoke-tests once configured: `/hermes/generate`, real HubSpot webhook, `/newsletter/send`.
+**5. Deploy** — Live on Render (web + `hermes-poll` + `leucrocotta-poll` crons), `/health` verified 200.
 
 **6. Loose ends / known shortcuts**
 - No `npm test` script — the `.test.js` files exist but aren't wired to a runner. Add one (`node --test`).
 - Idempotency is in-memory (`seenKeys`), resets on restart. The MO-sheet row is the persistent backstop; only upgrade to a Drive snapshot if restarts cause real churn.
 - `doc-render.js` is duplicated across `mayor-email-backend` and `mayor-invoice`; the 46-column detail-row layout in `googleStore.js` is also duplicated (both marked `ponytail:`). Consolidate only if a divergence actually bites.
 - Contact memory is flat `contact-<email>.md` files in Drive — fine until volume makes it slow.
-
----
-
-## First-run order
-
-1. HubSpot properties + private app + webhook → 2. Google service account + delegation + folder → 3. Env vars in Render → 4. Deploy → 5. Feed a real Nickel email into `nickelParser` and tune → 6. Watch the two cron logs for a full order cycle.
+- Delete the orphaned `social-poll` Render cron (see 4b).
