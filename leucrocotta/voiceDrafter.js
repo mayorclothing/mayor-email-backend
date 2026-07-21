@@ -31,7 +31,6 @@ async function draftReply({ threadText = '', voice = '', knowledge = '', contact
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 2000,
-    thinking: { type: 'adaptive' },
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     system,
     messages: [{
