@@ -66,15 +66,26 @@ async function getMessage(id) {
   };
 }
 
-// Fetch the whole thread's messages as plain text, oldest first (for context).
+// Fetch recent thread messages as plain text, oldest first (for context).
+// Capped to the last MAX_MESSAGES and MAX_BODY_CHARS per message — Gmail
+// bodies quote the whole prior thread inline, so a long chain blows past
+// Claude's context window otherwise (hit 238k tokens on a 30-message thread).
+const MAX_MESSAGES = 12;
+const MAX_BODY_CHARS = 4000;
+
 async function getThreadText(threadId) {
   const gmail = getGmail();
   const res = await gmail.users.threads.get({ userId: GMAIL_USER, id: threadId, format: 'full' });
-  return (res.data.messages || []).map((m) => {
+  const messages = res.data.messages || [];
+  const recent = messages.slice(-MAX_MESSAGES);
+  const text = recent.map((m) => {
     const from = header(m.payload, 'From');
-    const body = extractBody(m.payload) || m.snippet || '';
+    const body = (extractBody(m.payload) || m.snippet || '').slice(0, MAX_BODY_CHARS);
     return `From: ${from}\n${body}`;
   }).join('\n\n---\n\n');
+  return messages.length > recent.length
+    ? `[...${messages.length - recent.length} earlier messages omitted...]\n\n${text}`
+    : text;
 }
 
 // RFC 2822 draft in-thread. Returns the created draft id.
