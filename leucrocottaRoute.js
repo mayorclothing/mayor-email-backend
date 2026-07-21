@@ -38,6 +38,7 @@ router.post('/gmail-webhook/:secret', async (req, res) => {
     && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
   if (!ok) return res.sendStatus(404); // don't confirm the route exists to a bad guess
 
+  console.log('Leucrocotta webhook: push received, polling inbox');
   try {
     await runInboxPoll();
   } catch (e) {
