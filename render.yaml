@@ -28,6 +28,10 @@ services:
         value: Mayor Clothing
       - key: BRAND_LOGO_URL
         sync: false
+      - key: GMAIL_PUBSUB_TOPIC
+        sync: false
+      - key: LEUCROCOTTA_WEBHOOK_SECRET
+        sync: false
 
   # Hourly safety-net poll: reconciles HubSpot trigger flags via /hermes/poll.
   # Curls the web service so all HubSpot/Google secrets stay there — the cron
@@ -44,14 +48,16 @@ services:
       - key: INTERNAL_API_KEY
         sync: false
 
-  # Leucrocotta inbox poll: read unread mail, draft replies / flip paid status.
+  # Leucrocotta watch renewal: Gmail push (see /leucrocotta/gmail-webhook)
+  # drives the actual inbox check now. The watch() subscription expires
+  # after 7 days max, so renew every 6 days to keep it alive.
   - type: cron
-    name: leucrocotta-poll
+    name: leucrocotta-watch-renew
     runtime: node
     plan: starter
-    schedule: "*/15 * * * *"
+    schedule: "0 3 */6 * *"
     buildCommand: "true"
-    startCommand: 'curl -fsS -X POST "https://mayor-email-backend.onrender.com/leucrocotta/poll" -H "Authorization: Bearer $INTERNAL_API_KEY"'
+    startCommand: 'curl -fsS -X POST "https://mayor-email-backend.onrender.com/leucrocotta/watch" -H "Authorization: Bearer $INTERNAL_API_KEY"'
     envVars:
       - key: INTERNAL_API_KEY
         sync: false

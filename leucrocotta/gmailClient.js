@@ -93,6 +93,19 @@ async function createDraft({ threadId, to, subject, body, inReplyTo }) {
   return res.data.id;
 }
 
+// Register (or renew) push notifications: Google posts to GMAIL_PUBSUB_TOPIC
+// whenever INBOX changes. Expires after 7 days max — call this again before
+// then (see /leucrocotta/watch-renew cron, every 6 days).
+async function watch() {
+  const gmail = getGmail();
+  const topicName = process.env.GMAIL_PUBSUB_TOPIC;
+  const res = await gmail.users.watch({
+    userId: GMAIL_USER,
+    requestBody: { topicName, labelIds: ['INBOX'] },
+  });
+  return res.data; // { historyId, expiration (epoch ms string) }
+}
+
 async function markRead(id) {
   const gmail = getGmail();
   await gmail.users.messages.modify({ userId: GMAIL_USER, id, requestBody: { removeLabelIds: ['UNREAD'] } });
@@ -117,4 +130,4 @@ async function getSentReplyInThread(threadId, afterMs = 0) {
   return best;
 }
 
-module.exports = { enabled, listUnreadInbound, getMessage, getThreadText, createDraft, markRead, getSentReplyInThread, GMAIL_USER };
+module.exports = { enabled, listUnreadInbound, getMessage, getThreadText, createDraft, markRead, getSentReplyInThread, watch, GMAIL_USER };
