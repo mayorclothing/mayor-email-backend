@@ -48,7 +48,6 @@ function dealToRenderPayload(deal, docType) {
     let qty = n(p[QTY_PROPS[i]]);
     if (!qty && sizes) qty = qtyFromSizes(sizes);  // auto-qty from sizes (original rule)
     if (!qty && !desc) continue;
-    const fullDesc = sizes ? desc + (desc ? '\n' : '') + sizes : desc;
 
     const rawProduct = (p['product_' + (i + 1)] || '').trim();
     const isUrl = /^https?:\/\//i.test(rawProduct);
@@ -57,7 +56,8 @@ function dealToRenderPayload(deal, docType) {
     line_items.push({
       product: isUrl ? 'Custom Print Polo' : (rawProduct || 'Custom Print Polo'),
       url: isUrl ? rawProduct : '',
-      description: fullDesc,
+      description: desc,           // sizes kept separate now (own sheet column + re-merged at render)
+      sizes,
       quantity: qty,
       orig_price: null,            // HubSpot has no was/now price per slot
       price,
