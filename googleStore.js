@@ -5,7 +5,7 @@
 // GOOGLE_SERVICE_ACCOUNT_JSON it no-ops and reports { persisted:false } so the
 // /hermes/generate endpoint still works before the service account is set up.
 //
-// ponytail: the 46-column detail-row layout below is duplicated from
+// ponytail: the 53-column detail-row layout below is duplicated from
 // mayor-invoice (appendOrderToSheet + portal.js parseSheetRow). If that layout
 // changes there, update it here too. The clean fix is a shared `mo-sheet.js`
 // module (like doc-render.js); not worth it until the schema actually churns.
@@ -46,32 +46,40 @@ function getClients() {
 }
 
 // The portal's detail tabs expect this exact column order (see portal.js
-// parseSheetRow, cols A=0..AT=45). Drive link is appended at AU=46 (unread by
-// the portal, so safe). Mirrors mayor-invoice appendOrderToSheet's rowData.
+// parseSheetRow, cols A=0..BA=52). HubSpot-mirrored layout, 4 blocks; the Drive
+// PDF link lives at BA=52 (drive_pdf_link, now read by the portal). Mirrors
+// mayor-invoice appendOrderToSheet's rowData exactly — keep the two in lockstep.
 function buildDetailRow(p, driveLink) {
   const items = p.line_items || [];
   const get = (i, key) => (items[i] ? (items[i][key] || '') : '');
   return [
-    p.order_number || '', p.customer_email || '', p.club || '',
-    p.address || '', p.ship_date || '', p.payment_link || '',
-    get(0, 'url'), get(0, 'description'), get(0, 'quantity'), get(0, 'price'), get(0, 'orig_price') || '',
-    get(1, 'url'), get(1, 'description'), get(1, 'quantity'), get(1, 'price'), get(1, 'orig_price') || '',
-    get(2, 'url'), get(2, 'description'), get(2, 'quantity'), get(2, 'price'), get(2, 'orig_price') || '',
-    p.shipping || '', p.subtotal || '', p.embroidery || '',
-    (p.art_setup != null ? parseFloat(String(p.art_setup).replace(/[$,\s]/g, '')) || '' : ''), p.total || '',
-    get(3, 'url'), get(3, 'description'), get(3, 'quantity'), get(3, 'price'), get(3, 'orig_price') || '',
-    get(4, 'url'), get(4, 'description'), get(4, 'quantity'), get(4, 'price'), get(4, 'orig_price') || '',
-    p.product_page || '',
-    p.shipping_address || '',
-    p.date_label || 'Ship Date',
-    p.payment_link_2 || '',
+    // Block 1 — HubSpot single-value (A–I)
+    p.order_number || '', p.club || '', p.address || '',
+    p.shipping_address || '', p.ship_date || '', p.payment_link || '',
+    p.payment_link_2 || '', p.customer_email || '', p.product_page || '',
+    // Block 2 — line items, field-type grouped (J–AH): products, descriptions, sizes, quantities, prices
+    get(0, 'url'), get(1, 'url'), get(2, 'url'), get(3, 'url'), get(4, 'url'),
+    get(0, 'description'), get(1, 'description'), get(2, 'description'), get(3, 'description'), get(4, 'description'),
+    get(0, 'sizes'), get(1, 'sizes'), get(2, 'sizes'), get(3, 'sizes'), get(4, 'sizes'),
+    get(0, 'quantity'), get(1, 'quantity'), get(2, 'quantity'), get(3, 'quantity'), get(4, 'quantity'),
+    get(0, 'price'), get(1, 'price'), get(2, 'price'), get(3, 'price'), get(4, 'price'),
+    // Block 3 — remaining HubSpot single-value (AI–AN)
+    p.embroidery || '',
+    (p.art_setup != null ? parseFloat(String(p.art_setup).replace(/[$,\s]/g, '')) || '' : ''),
+    p.sample_reimbursement || '',
+    p.custom_label || '',
+    p.shipping || '',
     p.payment_terms || '',
+    // Block 4 — portal/computed-only (AO–BA)
+    p.subtotal || '',
+    p.total || '',
+    p.date_label || 'Ship Date',
     p.strike_embroidery ? '1' : '',
     p.strike_art ? '1' : '',
     p.strike_shipping ? '1' : '',
-    p.custom_label || '',
-    p.sample_reimbursement || '',
-    driveLink || '', // AU=46 — new: Drive PDF link
+    get(0, 'orig_price') || '', get(1, 'orig_price') || '', get(2, 'orig_price') || '', get(3, 'orig_price') || '', get(4, 'orig_price') || '',
+    p.in_hand_date || '', // AZ=51
+    driveLink || '', // BA=52 — Drive PDF link (drive_pdf_link)
   ];
 }
 
@@ -141,7 +149,7 @@ async function persistOrder({ payload, docType, pdfBuffer }) {
     const infoIdx = infoOrders.findIndex((o, i) => i > 0 && o === String(orderNumber));
     if (infoIdx < 1) {
       await writeRow(sheets, 'Order Info', orderNumber,
-        [orderNumber, payload.customer_email || '', payload.club || '', payload.ship_date || '', status, '', '', ''].map(sheetSafe));
+        [orderNumber, payload.club || '', payload.ship_date || '', payload.customer_email || '', status, '', '', ''].map(sheetSafe));
     } else if (docType === 'invoice') {
       // Advance status to Awaiting Payment when the invoice is generated.
       await sheets.spreadsheets.values.update({

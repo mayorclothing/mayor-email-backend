@@ -40,16 +40,19 @@ assert.strictEqual(p.payment_link_2, 'https://nickel.com/b');
 
 // Two line items built; empty slots skipped
 assert.strictEqual(p.line_items.length, 2);
-// Slot 1: product is a URL => image url set, product name defaulted, desc+sizes joined
+// Slot 1: product is a URL => image url set, product name defaulted; desc + sizes now separate
 assert.strictEqual(p.line_items[0].url, 'https://img.example.com/polo.png');
 assert.strictEqual(p.line_items[0].product, 'Custom Print Polo');
-assert.strictEqual(p.line_items[0].description, 'Navy piqué\nS-24 M-16 L-8');
+assert.strictEqual(p.line_items[0].description, 'Navy piqué');
+assert.strictEqual(p.line_items[0].sizes, 'S-24 M-16 L-8');
 assert.strictEqual(p.line_items[0].quantity, 48);
 assert.strictEqual(p.line_items[0].price, 42);
 assert.strictEqual(p.line_items[0].amount, 2016); // qty*price, must not be blank
 // Slot 2: non-URL product kept, no sizes
 assert.strictEqual(p.line_items[1].product, 'Custom Cap');
 assert.strictEqual(p.line_items[1].url, '');
+assert.strictEqual(p.line_items[1].description, 'White');
+assert.strictEqual(p.line_items[1].sizes, '');
 
 // Fees + cross-outs
 assert.strictEqual(p.embroidery, 150);
