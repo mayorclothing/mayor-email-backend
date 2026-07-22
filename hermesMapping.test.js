@@ -9,6 +9,7 @@ const deal = {
     dealname: 'PO #1 - Test Club',
     dealstage: '07. Delivered',
     zg_tracking_number: '1Z999',
+    print_background: 'https://img.example.com/swatch.png',
     club: 'Test Golf & Country Club',
     c_billing_address: '123 Main St\nAtlanta, GA 30307',
     shippingbilling_address: '',
@@ -78,7 +79,7 @@ assert.strictEqual(p.deal_id, 'D123');
 assert.strictEqual(p.deal_name, 'PO #1 - Test Club');
 assert.strictEqual(p.deal_stage, '07. Delivered');
 assert.strictEqual(p.tracking_number, '1Z999');
-assert.strictEqual(p.print_background, ''); // no HubSpot property yet
+assert.strictEqual(p.print_background, 'https://img.example.com/swatch.png');
 assert.strictEqual(p.subtotal_quantity, 60); // 48 + 12
 
 // order_confirmation maps to 'confirmation'
@@ -103,5 +104,6 @@ assert.ok(INVOICE_PROPERTIES.includes('z_price_5'));
 assert.ok(INVOICE_PROPERTIES.includes('dealname'));
 assert.ok(INVOICE_PROPERTIES.includes('dealstage'));
 assert.ok(INVOICE_PROPERTIES.includes('zg_tracking_number'));
+assert.ok(INVOICE_PROPERTIES.includes('print_background'));
 
 console.log('hermesMapping.test.js: all assertions passed');

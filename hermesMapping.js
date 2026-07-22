@@ -25,8 +25,9 @@ const INVOICE_PROPERTIES = [
   'payment_terms', 'unstrike',
   // Deals-tab-mirrored sheet columns (dealname/dealstage are standard HubSpot
   // properties; zg_tracking_number is Matt's tracking-number field, also used
-  // as the "in transit" trigger elsewhere).
-  'dealname', 'dealstage', 'zg_tracking_number',
+  // as the "in transit" trigger elsewhere; print_background is Matt's print
+  // swatch/background image property).
+  'dealname', 'dealstage', 'zg_tracking_number', 'print_background',
 ];
 
 // parseFloat that tolerates "$", "," and stray spaces; preserves a leading minus.
@@ -105,7 +106,7 @@ function dealToRenderPayload(deal, docType) {
     deal_name: p.dealname || '',
     deal_stage: p.dealstage || '',
     tracking_number: p.zg_tracking_number || '',
-    print_background: '',                  // ponytail: no HubSpot property yet, add when Matt creates one
+    print_background: p.print_background || '',
     order_number: p.order_number || '',
     club: p.club || '',
     address: addressBlock,
