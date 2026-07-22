@@ -5,14 +5,16 @@ const { buildDetailRow, persistOrder, credsPresent } = require('./googleStore');
 
 // Row must place fields at the exact indices portal.js parseSheetRow reads.
 const payload = {
+  deal_id: 'D123', deal_name: 'PO #1 - Test', deal_stage: 'Delivered', tracking_number: '1Z999',
   order_number: 'Test Club I', customer_email: 'a@club.com', club: 'Test GCC',
   address: '123 Main St', ship_date: '2026-07-20', payment_link: 'https://nickel.com/a',
+  print_background: 'https://img/bg.png', in_hand_date: '2026-08-01',
   line_items: [
     { url: 'https://img/p.png', description: 'Navy', sizes: 'S-24 M-16 L-8', quantity: 48, price: 42, orig_price: null },
     { url: '', description: 'White', sizes: '', quantity: 12, price: 0, orig_price: null },
   ],
   shipping: 25, subtotal: 2016, embroidery: 150, art_setup: -40, total: 2276,
-  product_page: 'https://x', shipping_address: '', date_label: 'Ship Date',
+  product_page: 'https://x', shipping_address: '',
   payment_link_2: 'https://nickel.com/b', payment_terms: 'Net 30',
   strike_embroidery: true, strike_art: false, strike_shipping: true,
   custom_label: null, sample_reimbursement: '(40.00)',
@@ -20,35 +22,42 @@ const payload = {
 
 const row = buildDetailRow(payload, 'https://drive.google.com/file/d/abc/view');
 
-// New HubSpot-mirrored layout, 4 blocks (see portal.js parseSheetRow, A=0..BA=52).
-assert.strictEqual(row[0], 'Test Club I');           // A  order#
-assert.strictEqual(row[1], 'Test GCC');              // B  club
-assert.strictEqual(row[2], '123 Main St');           // C  address
-assert.strictEqual(row[3], '');                      // D  shipping_address
-assert.strictEqual(row[4], '2026-07-20');            // E  ship_date
-assert.strictEqual(row[5], 'https://nickel.com/a');  // F  payment_link
-assert.strictEqual(row[6], 'https://nickel.com/b');  // G  payment_link_2
-assert.strictEqual(row[7], 'a@club.com');            // H  customer_email
-assert.strictEqual(row[8], 'https://x');             // I  product_page
-assert.strictEqual(row[9], 'https://img/p.png');     // J  product_1 (url)
-assert.strictEqual(row[14], 'Navy');                 // O  description_1
-assert.strictEqual(row[15], 'White');                // P  description_2
-assert.strictEqual(row[19], 'S-24 M-16 L-8');        // T  sizes_1
-assert.strictEqual(row[20], '');                     // U  sizes_2
-assert.strictEqual(row[24], 48);                     // Y  quantity_1
-assert.strictEqual(row[29], 42);                     // AD price_1
-assert.strictEqual(row[34], 150);                    // AI embroidery
-assert.strictEqual(row[35], -40);                    // AJ art_setup (signed)
-assert.strictEqual(row[36], '(40.00)');              // AK sample_reimbursement
-assert.strictEqual(row[38], 25);                     // AM shipping
-assert.strictEqual(row[39], 'Net 30');               // AN payment_terms
-assert.strictEqual(row[40], 2016);                   // AO subtotal
-assert.strictEqual(row[41], 2276);                   // AP total
-assert.strictEqual(row[43], '1');                    // AR strike_embroidery
-assert.strictEqual(row[44], '');                     // AS strike_art (false)
-assert.strictEqual(row[45], '1');                    // AT strike_shipping
-assert.strictEqual(row[52], 'https://drive.google.com/file/d/abc/view'); // BA drive_pdf_link
-assert.strictEqual(row.length, 53);
+// Deals-tab-mirrored layout (see portal.js parseSheetRow, A=0..BF=57).
+assert.strictEqual(row[0], 'D123');                  // A  deal_id
+assert.strictEqual(row[1], 'PO #1 - Test');          // B  deal_name
+assert.strictEqual(row[2], 'Delivered');             // C  deal_stage
+assert.strictEqual(row[3], '1Z999');                 // D  tracking_number
+assert.strictEqual(row[4], 'a@club.com');            // E  customer_email
+assert.strictEqual(row[5], 'Test Club I');           // F  order_number
+assert.strictEqual(row[6], 'https://x');             // G  product_page
+assert.strictEqual(row[7], 'https://img/bg.png');    // H  print_background
+assert.strictEqual(row[8], 'Test GCC');              // I  club
+assert.strictEqual(row[9], '');                      // J  shipping_address
+assert.strictEqual(row[10], '123 Main St');          // K  address
+assert.strictEqual(row[11], '2026-07-20');           // L  ship_date
+assert.strictEqual(row[12], '2026-08-01');           // M  in_hand_date
+assert.strictEqual(row[13], 'Net 30');               // N  payment_terms
+assert.strictEqual(row[14], 'https://img/p.png');    // O  product_1 (url)
+assert.strictEqual(row[15], 'Navy');                 // P  description_1
+assert.strictEqual(row[16], 'S-24 M-16 L-8');        // Q  sizes_1
+assert.strictEqual(row[17], 48);                     // R  quantity_1
+assert.strictEqual(row[18], 42);                     // S  price_1
+assert.strictEqual(row[20], 'White');                // U  description_2
+assert.strictEqual(row[21], '');                     // V  sizes_2
+assert.strictEqual(row[39], 60);                     // AN subtotal_quantity
+assert.strictEqual(row[40], 2016);                   // AO subtotal_price
+assert.strictEqual(row[41], 150);                    // AP embroidery
+assert.strictEqual(row[42], -40);                    // AQ art_setup (signed)
+assert.strictEqual(row[43], '(40.00)');              // AR sample_reimbursement
+assert.strictEqual(row[45], 25);                     // AT shipping
+assert.strictEqual(row[46], 2276);                   // AU total
+assert.strictEqual(row[47], 'https://nickel.com/a'); // AV payment_link
+assert.strictEqual(row[48], 'https://nickel.com/b'); // AW payment_link_2
+assert.strictEqual(row[49], '1');                    // AX strike_embroidery
+assert.strictEqual(row[50], '');                     // AY strike_art (false)
+assert.strictEqual(row[51], '1');                    // AZ strike_shipping
+assert.strictEqual(row[57], 'https://drive.google.com/file/d/abc/view'); // BF drive_pdf_link
+assert.strictEqual(row.length, 58);
 
 // No creds => persistOrder degrades gracefully, does not throw, reports status.
 (async () => {

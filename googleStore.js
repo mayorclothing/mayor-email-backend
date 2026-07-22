@@ -45,47 +45,48 @@ function getClients() {
   return { sheets: google.sheets({ version: 'v4', auth }), drive: google.drive({ version: 'v3', auth }) };
 }
 
-// The portal's detail tabs expect this exact column order (see portal.js
-// parseSheetRow, cols A=0..BA=52). HubSpot-mirrored layout, 4 blocks; the Drive
-// PDF link lives at BA=52 (drive_pdf_link, now read by the portal). Mirrors
+// The portal's detail tabs mirror the HubSpot "Deals" tab's column order and
+// names exactly (see portal.js parseSheetRow, cols A=0..BF=57), with a few
+// fields the Deals tab has no slot for appended at the end (orig_price x5,
+// drive_pdf_link) and print_background inserted after product_page. Order
+// Number lives at F=5 here, not A — Deal ID takes column A instead. Mirrors
 // mayor-invoice appendOrderToSheet's rowData exactly — keep the two in lockstep.
 function buildDetailRow(p, driveLink) {
   const items = p.line_items || [];
   const get = (i, key) => (items[i] ? (items[i][key] || '') : '');
+  const subtotalQty = p.subtotal_quantity != null ? p.subtotal_quantity : items.reduce((s, li) => s + (Number(li.quantity) || 0), 0);
   return [
-    // Block 1 — HubSpot single-value (A–I)
-    p.order_number || '', p.club || '', p.address || '',
-    p.shipping_address || '', p.ship_date || '', p.payment_link || '',
-    p.payment_link_2 || '', p.customer_email || '', p.product_page || '',
-    // Block 2 — line items, field-type grouped (J–AH): products, descriptions, sizes, quantities, prices
-    get(0, 'url'), get(1, 'url'), get(2, 'url'), get(3, 'url'), get(4, 'url'),
-    get(0, 'description'), get(1, 'description'), get(2, 'description'), get(3, 'description'), get(4, 'description'),
-    get(0, 'sizes'), get(1, 'sizes'), get(2, 'sizes'), get(3, 'sizes'), get(4, 'sizes'),
-    get(0, 'quantity'), get(1, 'quantity'), get(2, 'quantity'), get(3, 'quantity'), get(4, 'quantity'),
-    get(0, 'price'), get(1, 'price'), get(2, 'price'), get(3, 'price'), get(4, 'price'),
-    // Block 3 — remaining HubSpot single-value (AI–AN)
+    p.deal_id || '', p.deal_name || '', p.deal_stage || '', p.tracking_number || '',
+    p.customer_email || '', p.order_number || '', p.product_page || '',
+    p.print_background || '',
+    p.club || '', p.shipping_address || '', p.address || '',
+    p.ship_date || '', p.in_hand_date || '', p.payment_terms || '',
+    // Products/Description/Sizes/Quantity/Price x5 — mirrors the Deals tab's own
+    // quirky ordering (slots 4/5 group Product/Description/Sizes together,
+    // then their Quantity/Price come after slot 5's Sizes).
+    get(0, 'url'), get(0, 'description'), get(0, 'sizes'), get(0, 'quantity'), get(0, 'price'),
+    get(1, 'url'), get(1, 'description'), get(1, 'sizes'), get(1, 'quantity'), get(1, 'price'),
+    get(2, 'url'), get(2, 'description'), get(2, 'sizes'), get(2, 'quantity'), get(2, 'price'),
+    get(3, 'url'), get(3, 'description'), get(3, 'sizes'),
+    get(4, 'url'), get(4, 'description'), get(4, 'sizes'),
+    get(3, 'quantity'), get(3, 'price'), get(4, 'quantity'), get(4, 'price'),
+    subtotalQty || '', p.subtotal || '',
     p.embroidery || '',
     (p.art_setup != null ? parseFloat(String(p.art_setup).replace(/[$,\s]/g, '')) || '' : ''),
-    p.sample_reimbursement || '',
-    p.custom_label || '',
-    p.shipping || '',
-    p.payment_terms || '',
-    // Block 4 — portal/computed-only (AO–BA)
-    p.subtotal || '',
-    p.total || '',
-    p.date_label || 'Ship Date',
-    p.strike_embroidery ? '1' : '',
-    p.strike_art ? '1' : '',
-    p.strike_shipping ? '1' : '',
+    p.sample_reimbursement || '', p.custom_label || '', p.shipping || '', p.total || '',
+    p.payment_link || '', p.payment_link_2 || '',
+    p.strike_embroidery ? '1' : '', p.strike_art ? '1' : '', p.strike_shipping ? '1' : '',
     get(0, 'orig_price') || '', get(1, 'orig_price') || '', get(2, 'orig_price') || '', get(3, 'orig_price') || '', get(4, 'orig_price') || '',
-    p.in_hand_date || '', // AZ=51
-    driveLink || '', // BA=52 — Drive PDF link (drive_pdf_link)
+    driveLink || '', // BF=57 — Drive PDF link (drive_pdf_link)
   ];
 }
 
 // Upsert keyed on order_number in column A (skip header row 1). Returns 1-based row.
 async function writeRow(sheets, tab, orderNumber, rowData) {
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${tab}!A:A` });
+  // Order Info keys on column A; Order Confirmations/Invoices key on F (Order
+  // Number, per the Deals-mirrored layout — Deal ID takes column A there).
+  const keyCol = tab === 'Order Info' ? 'A' : 'F';
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${tab}!${keyCol}:${keyCol}` });
   const col = res.data.values || [];
   const existingIdx = col.findIndex((r, i) => i > 0 && String(r[0]) === String(orderNumber));
   let targetRow;

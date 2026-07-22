@@ -3,8 +3,12 @@ const assert = require('assert');
 const { dealToRenderPayload, INVOICE_PROPERTIES } = require('./hermesMapping');
 
 const deal = {
+  id: 'D123',
   properties: {
     order_number: 'Test Club I',
+    dealname: 'PO #1 - Test Club',
+    dealstage: '07. Delivered',
+    zg_tracking_number: '1Z999',
     club: 'Test Golf & Country Club',
     c_billing_address: '123 Main St\nAtlanta, GA 30307',
     shippingbilling_address: '',
@@ -69,6 +73,14 @@ assert.strictEqual(p.custom_label, null); // 0 => omitted
 assert.strictEqual(p.subtotal, 0);
 assert.strictEqual(p.total, 0);
 
+// Deals-tab-mirrored fields
+assert.strictEqual(p.deal_id, 'D123');
+assert.strictEqual(p.deal_name, 'PO #1 - Test Club');
+assert.strictEqual(p.deal_stage, '07. Delivered');
+assert.strictEqual(p.tracking_number, '1Z999');
+assert.strictEqual(p.print_background, ''); // no HubSpot property yet
+assert.strictEqual(p.subtotal_quantity, 60); // 48 + 12
+
 // order_confirmation maps to 'confirmation'
 assert.strictEqual(dealToRenderPayload(deal, 'order_confirmation').type, 'confirmation');
 
@@ -88,5 +100,8 @@ assert.strictEqual(uns.strike_shipping, true);
 // Property list covers all 5 slots of qty + price
 assert.ok(INVOICE_PROPERTIES.includes('z_quantity_5'));
 assert.ok(INVOICE_PROPERTIES.includes('z_price_5'));
+assert.ok(INVOICE_PROPERTIES.includes('dealname'));
+assert.ok(INVOICE_PROPERTIES.includes('dealstage'));
+assert.ok(INVOICE_PROPERTIES.includes('zg_tracking_number'));
 
 console.log('hermesMapping.test.js: all assertions passed');
