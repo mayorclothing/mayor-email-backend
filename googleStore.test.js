@@ -1,7 +1,7 @@
 // Runnable check for the MO-sheet row layout + no-creds guard.
 // `node googleStore.test.js`. No network: persistOrder must no-op without creds.
 const assert = require('assert');
-const { buildDetailRow, persistOrder, credsPresent } = require('./googleStore');
+const { buildDetailRow, persistOrder, credsPresent, matchRowIndex } = require('./googleStore');
 
 // Row must place fields at the exact indices portal.js parseSheetRow reads.
 const payload = {
@@ -66,6 +66,26 @@ const zeroedPayload = { ...payload, subtotal: 0, total: 0 };
 const zeroedRow = buildDetailRow(zeroedPayload, 'https://drive.google.com/file/d/abc/view');
 assert.strictEqual(zeroedRow[40], 2016, 'subtotal falls back to sum of line items');
 assert.strictEqual(zeroedRow[46], 1936, 'total falls back to subtotal + shipping/custom/emb/art - reimbursement (struck fees excluded)');
+
+// F10 upsert keying: prefer stable deal_id so a HubSpot rename updates in place.
+// OC/Invoices layout: deal_id col A(0), order_number col F(5).
+const ocRows = [
+  new Array(8).fill('hdr'),
+  ['D1', '', '', '', '', 'Old Name', '', ''],   // row 2: deal D1, order "Old Name"
+  ['', '', '', '', '', 'Manual', '', ''],        // row 3: legacy row, no deal_id
+];
+assert.strictEqual(matchRowIndex(ocRows, 0, 5, 'D1', 'New Name'), 1, 'rename: found by deal_id, not order#');
+assert.strictEqual(matchRowIndex(ocRows, 0, 5, 'D2', 'Manual'), 2, 'adopt legacy no-deal_id row by order#');
+assert.strictEqual(matchRowIndex(ocRows, 0, 5, '', 'Manual'), 2, 'no deal_id: fall back to order#');
+assert.strictEqual(matchRowIndex(ocRows, 0, 5, 'D9', 'Nope'), -1, 'no match');
+// Order Info layout: deal_id col H(7), order_number col A(0).
+const infoRows = [
+  new Array(8).fill('hdr'),
+  ['Old Name', 'club', '', '', 'Awaiting Payment', '', '', 'D1'],
+];
+assert.strictEqual(matchRowIndex(infoRows, 7, 0, 'D1', 'New Name'), 1, 'Order Info rename by deal_id in col H');
+assert.strictEqual(matchRowIndex(infoRows, 7, 0, '', 'Old Name'), 1, 'Order Info fallback by order#');
+assert.strictEqual(matchRowIndex(infoRows, 7, 0, 'D2', 'Nope'), -1, 'Order Info no match');
 
 // No creds => persistOrder degrades gracefully, does not throw, reports status.
 (async () => {

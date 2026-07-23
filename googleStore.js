@@ -12,6 +12,7 @@
 
 const { google } = require('googleapis');
 const { Readable } = require('stream');
+const { buildRow, INFO_DEAL_COL, matchRowIndex, firstEmptyRow } = require('./mo-sheet');
 
 // No fallback: the old hardcoded id ('152hyxQz…') is the DEAD pre-reorg sheet.
 // A missing MO_SHEET_ID must fail loudly (see getClients), never silently write
@@ -98,30 +99,28 @@ function buildDetailRow(p, driveLink) {
   const get = (i, key) => (items[i] ? (items[i][key] || '') : '');
   const subtotalQty = p.subtotal_quantity != null ? p.subtotal_quantity : items.reduce((s, li) => s + (Number(li.quantity) || 0), 0);
   const { subtotal: effSubtotal, total: effTotal } = effectiveSubtotalAndTotal(p);
-  return [
-    p.deal_id || '', p.deal_name || '', p.deal_stage || '', p.tracking_number || '',
-    p.customer_email || '', p.order_number || '', p.product_page || '',
-    p.print_background || '',
-    p.club || '', p.shipping_address || '', p.address || '',
-    p.ship_date || '', p.in_hand_date || '', p.payment_terms || '',
-    // Products/Description/Sizes/Quantity/Price x5 — mirrors the Deals tab's own
-    // quirky ordering (slots 4/5 group Product/Description/Sizes together,
-    // then their Quantity/Price come after slot 5's Sizes).
-    get(0, 'url'), get(0, 'description'), get(0, 'sizes'), get(0, 'quantity'), get(0, 'price'),
-    get(1, 'url'), get(1, 'description'), get(1, 'sizes'), get(1, 'quantity'), get(1, 'price'),
-    get(2, 'url'), get(2, 'description'), get(2, 'sizes'), get(2, 'quantity'), get(2, 'price'),
-    get(3, 'url'), get(3, 'description'), get(3, 'sizes'),
-    get(4, 'url'), get(4, 'description'), get(4, 'sizes'),
-    get(3, 'quantity'), get(3, 'price'), get(4, 'quantity'), get(4, 'price'),
-    subtotalQty || '', effSubtotal || '',
-    p.embroidery || '',
-    (p.art_setup != null ? parseFloat(String(p.art_setup).replace(/[$,\s]/g, '')) || '' : ''),
-    p.sample_reimbursement || '', p.custom_label || '', p.shipping || '', effTotal || '',
-    p.payment_link || '', p.payment_link_2 || '',
-    p.strike_embroidery ? '1' : '', p.strike_art ? '1' : '', p.strike_shipping ? '1' : '',
-    get(0, 'orig_price') || '', get(1, 'orig_price') || '', get(2, 'orig_price') || '', get(3, 'orig_price') || '', get(4, 'orig_price') || '',
-    driveLink || '', // BF=57 — Drive PDF link (drive_pdf_link)
-  ];
+  // Column order lives in mo-sheet.js — reference cells by name, never position.
+  return buildRow({
+    deal_id: p.deal_id || '', deal_name: p.deal_name || '', deal_stage: p.deal_stage || '', tracking_number: p.tracking_number || '',
+    customer_email: p.customer_email || '', order_number: p.order_number || '', product_page: p.product_page || '',
+    print_background: p.print_background || '',
+    club: p.club || '', shipping_address: p.shipping_address || '', address: p.address || '',
+    ship_date: p.ship_date || '', in_hand_date: p.in_hand_date || '', payment_terms: p.payment_terms || '',
+    p1_url: get(0, 'url'), p1_desc: get(0, 'description'), p1_sizes: get(0, 'sizes'), p1_qty: get(0, 'quantity'), p1_price: get(0, 'price'),
+    p2_url: get(1, 'url'), p2_desc: get(1, 'description'), p2_sizes: get(1, 'sizes'), p2_qty: get(1, 'quantity'), p2_price: get(1, 'price'),
+    p3_url: get(2, 'url'), p3_desc: get(2, 'description'), p3_sizes: get(2, 'sizes'), p3_qty: get(2, 'quantity'), p3_price: get(2, 'price'),
+    p4_url: get(3, 'url'), p4_desc: get(3, 'description'), p4_sizes: get(3, 'sizes'),
+    p5_url: get(4, 'url'), p5_desc: get(4, 'description'), p5_sizes: get(4, 'sizes'),
+    p4_qty: get(3, 'quantity'), p4_price: get(3, 'price'), p5_qty: get(4, 'quantity'), p5_price: get(4, 'price'),
+    subtotal_quantity: subtotalQty || '', subtotal: effSubtotal || '',
+    embroidery: p.embroidery || '',
+    art_setup: (p.art_setup != null ? parseFloat(String(p.art_setup).replace(/[$,\s]/g, '')) || '' : ''),
+    sample_reimbursement: p.sample_reimbursement || '', custom_label: p.custom_label || '', shipping: p.shipping || '', total: effTotal || '',
+    payment_link: p.payment_link || '', payment_link_2: p.payment_link_2 || '',
+    strike_embroidery: p.strike_embroidery ? '1' : '', strike_art: p.strike_art ? '1' : '', strike_shipping: p.strike_shipping ? '1' : '',
+    orig_price_1: get(0, 'orig_price') || '', orig_price_2: get(1, 'orig_price') || '', orig_price_3: get(2, 'orig_price') || '', orig_price_4: get(3, 'orig_price') || '', orig_price_5: get(4, 'orig_price') || '',
+    drive_pdf_link: driveLink || '',
+  });
 }
 
 // Pre-registers a customer in the Users sheet (A=email, B=passwordHash, C=club)
@@ -153,24 +152,15 @@ async function upsertUserEmail(sheets, email, club) {
   }
 }
 
-// Upsert keyed on order_number in column A (skip header row 1). Returns 1-based row.
-async function writeRow(sheets, tab, orderNumber, rowData) {
-  // Order Info keys on column A; Order Confirmations/Invoices key on F (Order
-  // Number, per the Deals-mirrored layout — Deal ID takes column A there).
-  const keyCol = tab === 'Order Info' ? 'A' : 'F';
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${tab}!${keyCol}:${keyCol}` });
-  const col = res.data.values || [];
-  const existingIdx = col.findIndex((r, i) => i > 0 && String(r[0]) === String(orderNumber));
-  let targetRow;
-  if (existingIdx > 0) {
-    targetRow = existingIdx + 1;
-  } else {
-    let firstEmpty = col.length + 1;
-    for (let i = 1; i < col.length; i++) {
-      if (!col[i] || !col[i][0] || col[i][0].trim() === '') { firstEmpty = i + 1; break; }
-    }
-    targetRow = firstEmpty;
-  }
+// Upsert a full row, keyed on deal_id (fallback order_number). Returns 1-based row.
+async function writeRow(sheets, tab, { dealId, orderNumber }, rowData) {
+  const isInfo = tab === 'Order Info';
+  const dealIdx = isInfo ? INFO_DEAL_COL : 0;
+  const orderIdx = isInfo ? 0 : 5;
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${tab}!A:H` });
+  const rows = res.data.values || [];
+  const idx = matchRowIndex(rows, dealIdx, orderIdx, dealId, orderNumber);
+  const targetRow = idx > 0 ? idx + 1 : firstEmptyRow(rows, orderIdx);
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
     range: `${tab}!A${targetRow}`,
@@ -213,33 +203,38 @@ async function persistOrder({ payload, docType, pdfBuffer }) {
   try {
     const { sheets, drive } = getClients();
     const orderNumber = payload.order_number || '';
+    const dealId = payload.deal_id || '';
 
     const { fileId, pdfUrl } = await uploadPdfToDrive(drive, orderNumber, docType, pdfBuffer);
 
-    // Order Info: the row the portal lists. New order => seed it; keep status current.
-    // Read A:E so we know the current status and never move it backward (F3).
-    const infoRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Order Info!A:E' });
+    // Order Info: the row the portal lists. Keyed on deal_id (col H) so a HubSpot
+    // rename updates in place; read A:H for the deal_id + current status (F3).
+    const infoRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Order Info!A:H' });
     const infoRows = infoRes.data.values || [];
-    const infoIdx = infoRows.findIndex((r, i) => i > 0 && String(r[0] || '') === String(orderNumber));
+    const infoIdx = matchRowIndex(infoRows, INFO_DEAL_COL, 0, dealId, orderNumber);
     if (infoIdx < 1) {
-      await writeRow(sheets, 'Order Info', orderNumber,
-        [orderNumber, payload.club || '', payload.ship_date || '', payload.customer_email || '', status, '', '', ''].map(sheetSafe));
+      await writeRow(sheets, 'Order Info', { dealId, orderNumber },
+        [orderNumber, payload.club || '', payload.ship_date || '', payload.customer_email || '', status, '', '', dealId].map(sheetSafe));
       // customer_email can be a comma/semicolon list (see portal.js emailInList) --
       // pre-register each address so every recipient can log in, not just the first.
       const emails = String(payload.customer_email || '').split(/[,;]+/).map((e) => e.trim()).filter(Boolean);
       for (const email of emails) await upsertUserEmail(sheets, email, payload.club);
-    } else if (docType === 'invoice' && statusRank(status) > statusRank(infoRows[infoIdx][4])) {
-      // Advance to Awaiting Payment only if the order isn't already further along
-      // (paid/in transit/delivered) — regenerating an invoice must not regress it.
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SHEET_ID, range: `Order Info!E${infoIdx + 1}`,
-        valueInputOption: 'USER_ENTERED', resource: { values: [[status]] },
-      });
+    } else {
+      const row = infoRows[infoIdx];
+      const targetRow = infoIdx + 1;
+      const updates = [];
+      // Rename / legacy-adopt: keep order_number (A) and deal_id (H) current.
+      if (String(row[0] || '') !== String(orderNumber)) updates.push({ range: `Order Info!A${targetRow}`, values: [[sheetSafe(orderNumber)]] });
+      if (dealId && String(row[INFO_DEAL_COL] || '') !== String(dealId)) updates.push({ range: `Order Info!H${targetRow}`, values: [[sheetSafe(dealId)]] });
+      // Advance status only forward — regenerating an invoice must not regress a
+      // paid/delivered order (F3).
+      if (docType === 'invoice' && statusRank(status) > statusRank(row[4])) updates.push({ range: `Order Info!E${targetRow}`, values: [[sheetSafe(status)]] });
+      if (updates.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SHEET_ID, resource: { valueInputOption: 'USER_ENTERED', data: updates } });
     }
 
-    // Detail row for the portal's document view.
+    // Detail row for the portal's document view — also keyed on deal_id (F10).
     const tab = docType === 'invoice' ? 'Invoices' : 'Order Confirmations';
-    await writeRow(sheets, tab, orderNumber, buildDetailRow(payload, pdfUrl));
+    await writeRow(sheets, tab, { dealId, orderNumber }, buildDetailRow(payload, pdfUrl));
 
     return { persisted: true, status, driveFileId: fileId, pdfUrl };
   } catch (e) {
@@ -280,4 +275,4 @@ async function setOrderStatus({ orderNumber, status, tracking, deliveredDate }) 
   }
 }
 
-module.exports = { persistOrder, setOrderStatus, buildDetailRow, credsPresent };
+module.exports = { persistOrder, setOrderStatus, buildDetailRow, credsPresent, matchRowIndex };
