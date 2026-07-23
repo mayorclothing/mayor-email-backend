@@ -14,6 +14,7 @@ const deal = {
     c_billing_address: '123 Main St\nAtlanta, GA 30307',
     shippingbilling_address: '',
     ship_date: '2026-07-20',
+    zf_delivered_date: '2026-07-25',
     y_payment_link: 'https://nickel.com/a / https://nickel.com/b',
     customer_email: 'a@club.com, b@club.com',
     product_page: 'https://mayorclothing.com/x',
@@ -32,7 +33,7 @@ const deal = {
     custom_main_label: '0',
     shipping_cost: '25',
     payment_terms: 'Due on receipt.',
-    unstrike: '',
+    unstrike: 'Embroidery, Art Setup',
   },
 };
 
@@ -59,7 +60,10 @@ assert.strictEqual(p.line_items[1].url, '');
 assert.strictEqual(p.line_items[1].description, 'White');
 assert.strictEqual(p.line_items[1].sizes, '');
 
-// Fees + cross-outs
+// In Hand Date (zf_delivered_date) formatted like ship date
+assert.strictEqual(p.in_hand_date, 'Saturday, July 25, 2026');
+
+// Fees + cross-outs — direct strike: "Embroidery, Art Setup" waives both, not shipping
 assert.strictEqual(p.embroidery, 150);
 assert.strictEqual(p.strike_embroidery, true);
 assert.strictEqual(p.art_setup, -40);
@@ -88,15 +92,25 @@ assert.strictEqual(dealToRenderPayload(deal, 'order_confirmation').type, 'confir
 // Empty deal => empty-but-valid payload, no throw
 const empty = dealToRenderPayload({ properties: {} }, 'invoice');
 assert.strictEqual(empty.line_items.length, 0);
-// Default (no Unstrike): embroidery + art setup struck, shipping charged.
-assert.strictEqual(empty.strike_embroidery, true);
-assert.strictEqual(empty.strike_art, true);
+// Direct strike, empty "Strike" field => nothing struck (everything charged).
+assert.strictEqual(empty.strike_embroidery, false);
+assert.strictEqual(empty.strike_art, false);
 assert.strictEqual(empty.strike_shipping, false);
-// Unstrike flips items from default: Embroidery/Art -> charged; Shipping -> struck.
+// Listing an item strikes it. "Embroidery; Shipping" -> emb + shipping struck, art not.
 const uns = dealToRenderPayload({ properties: { unstrike: 'Embroidery; Shipping' } }, 'invoice');
-assert.strictEqual(uns.strike_embroidery, false);
-assert.strictEqual(uns.strike_art, true);
+assert.strictEqual(uns.strike_embroidery, true);
+assert.strictEqual(uns.strike_art, false);
 assert.strictEqual(uns.strike_shipping, true);
+// Robust to "and" / no separators: "Embroidery and Art Setup" strikes both.
+const andForm = dealToRenderPayload({ properties: { unstrike: 'Embroidery and Art Setup' } }, 'invoice');
+assert.strictEqual(andForm.strike_embroidery, true);
+assert.strictEqual(andForm.strike_art, true);
+assert.strictEqual(andForm.strike_shipping, false);
+// Oxford-comma + "and Shipping" all struck.
+const allForm = dealToRenderPayload({ properties: { unstrike: 'Embroidery, Art Setup, and Shipping' } }, 'invoice');
+assert.strictEqual(allForm.strike_embroidery, true);
+assert.strictEqual(allForm.strike_art, true);
+assert.strictEqual(allForm.strike_shipping, true);
 
 // Property list covers all 5 slots of qty + price
 assert.ok(INVOICE_PROPERTIES.includes('z_quantity_5'));
@@ -105,5 +119,6 @@ assert.ok(INVOICE_PROPERTIES.includes('dealname'));
 assert.ok(INVOICE_PROPERTIES.includes('dealstage'));
 assert.ok(INVOICE_PROPERTIES.includes('zg_tracking_number'));
 assert.ok(INVOICE_PROPERTIES.includes('print_background'));
+assert.ok(INVOICE_PROPERTIES.includes('zf_delivered_date'));
 
 console.log('hermesMapping.test.js: all assertions passed');

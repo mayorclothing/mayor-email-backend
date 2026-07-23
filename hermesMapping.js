@@ -22,7 +22,7 @@ const INVOICE_PROPERTIES = [
   'sizes_1', 'sizes_2', 'sizes_3', 'sizes_4', 'sizes_5',
   ...QTY_PROPS, ...PRICE_PROPS,
   'za_embroidery', 'zb_art_setup', 'z_sample_reimbursement', 'custom_main_label', 'shipping_cost',
-  'payment_terms', 'unstrike',
+  'payment_terms', 'unstrike', 'zf_delivered_date',
   // Deals-tab-mirrored sheet columns (dealname/dealstage are standard HubSpot
   // properties; zg_tracking_number is Matt's tracking-number field, also used
   // as the "in transit" trigger elsewhere; print_background is Matt's print
@@ -73,15 +73,15 @@ function dealToRenderPayload(deal, docType) {
   // Payment links: one field, one or two links separated by " / " => 50/50 labeling.
   const links = String(p.y_payment_link || '').split(' / ').map((s) => s.trim()).filter(Boolean);
 
-  // Strike/waive logic driven by the "Unstrike" field (free text; ";" or ","
-  // separated item names). Defaults: Embroidery + Art Setup are struck (waived,
-  // excluded from the total); Shipping is charged. "Unstrike" flips an item from
-  // its default — listing Embroidery or Art Setup charges it; listing Shipping
-  // strikes (waives) it.
-  const unstrikeList = String(p.unstrike || '').toLowerCase().split(/[;,]/).map((s) => s.trim());
-  const strikeEmb = !unstrikeList.includes('embroidery');
-  const strikeArt = !unstrikeList.includes('art setup');
-  const strikeShip = unstrikeList.includes('shipping');
+  // Strike/waive logic driven by the "Strike" field (HubSpot property `unstrike`,
+  // whose display label is "Strike"; free text). DIRECT semantics: listing an
+  // item strikes it — shown with a line through it and excluded from the total.
+  // Empty => nothing struck (everything charged). Substring match so any phrasing
+  // works: "Embroidery and Art Setup", "Embroidery, Art Setup, and Shipping", etc.
+  const strikeStr = String(p.unstrike || '').toLowerCase();
+  const strikeEmb = /embroidery/.test(strikeStr);
+  const strikeArt = /art setup/.test(strikeStr);
+  const strikeShip = /shipping/.test(strikeStr);
 
   const emb = n(p.za_embroidery);
   const art = n(p.zb_art_setup);           // signed: negative = art credit
@@ -112,6 +112,7 @@ function dealToRenderPayload(deal, docType) {
     address: addressBlock,
     shipping_address: shippingBlock,
     ship_date: parseShipDate(p.ship_date || ''),
+    in_hand_date: parseShipDate(p.zf_delivered_date || ''),  // HubSpot "In Hand Date" -> sheet col M
     date_label: 'Ship Date',                // delivery date dropped (blueprint §4.3)
     customer_email: p.customer_email || '',
     product_page: p.product_page || '',
