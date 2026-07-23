@@ -27,7 +27,11 @@ async function generateDocument({ dealId, docType, idempotencyKey }) {
   const orderNumber = payload.order_number;
 
   // Blueprint §6.1: an invoice only generates once a payment link is present.
+  // Log it loudly rather than skipping silently — otherwise the customer just
+  // sees "Invoice not available yet" forever with nobody knowing a missing link
+  // is the blocker (F6).
   if (docType === 'invoice' && !payload.payment_link) {
+    console.warn(`Invoice NOT generated for deal ${dealId} (order "${orderNumber}"): no payment link. Set y_payment_link in HubSpot, then re-trigger the invoice.`);
     return { ok: false, docType, orderNumber, skipped: 'no payment link' };
   }
 

@@ -13,7 +13,10 @@
 const { google } = require('googleapis');
 const { Readable } = require('stream');
 
-const SHEET_ID = process.env.MO_SHEET_ID || '152hyxQz87IwPYl2lgBCm6pKKSjYl1hoL-AuZu-wODbo';
+// No fallback: the old hardcoded id ('152hyxQz…') is the DEAD pre-reorg sheet.
+// A missing MO_SHEET_ID must fail loudly (see getClients), never silently write
+// to the wrong sheet. Only the live id belongs here, and only via the env var.
+const SHEET_ID = process.env.MO_SHEET_ID || '';
 const DRIVE_FOLDER_ID = process.env.DRIVE_BRAIN_FOLDER_ID || '';
 const SHEET_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT || '{}');
 
@@ -39,6 +42,7 @@ const STATUS_RANK = {
 const statusRank = (s) => STATUS_RANK[String(s || '').trim().toLowerCase()] || 0;
 
 function getClients() {
+  if (!SHEET_ID) throw new Error('MO_SHEET_ID is not set — refusing to run against the dead fallback sheet.');
   // Service accounts have no Drive storage quota, so acting as the SA's own
   // identity can't create files ("Service Accounts do not have storage quota").
   // Impersonate the Workspace user (same domain-wide delegation the Gmail client
