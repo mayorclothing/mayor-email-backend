@@ -59,6 +59,14 @@ assert.strictEqual(row[51], '1');                    // AZ strike_shipping
 assert.strictEqual(row[57], 'https://drive.google.com/file/d/abc/view'); // BF drive_pdf_link
 assert.strictEqual(row.length, 58);
 
+// hermesMapping.js deliberately sends subtotal:0/total:0 ("force doc-render to
+// recompute from line items") -- buildDetailRow must fall back to the same
+// computed numbers doc-render.js's PDF shows, not write blanks to the sheet.
+const zeroedPayload = { ...payload, subtotal: 0, total: 0 };
+const zeroedRow = buildDetailRow(zeroedPayload, 'https://drive.google.com/file/d/abc/view');
+assert.strictEqual(zeroedRow[40], 2016, 'subtotal falls back to sum of line items');
+assert.strictEqual(zeroedRow[46], 1936, 'total falls back to subtotal + shipping/custom/emb/art - reimbursement (struck fees excluded)');
+
 // No creds => persistOrder degrades gracefully, does not throw, reports status.
 (async () => {
   assert.strictEqual(credsPresent(), false, 'test env should have no GOOGLE_SERVICE_ACCOUNT_JSON');

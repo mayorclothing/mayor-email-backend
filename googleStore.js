@@ -51,10 +51,39 @@ function getClients() {
 // drive_pdf_link) and print_background inserted after product_page. Order
 // Number lives at F=5 here, not A — Deal ID takes column A instead. Mirrors
 // mayor-invoice appendOrderToSheet's rowData exactly — keep the two in lockstep.
+// hermesMapping.js deliberately zeroes payload.subtotal/total ("force doc-render
+// to recompute from line items") so the PDF always shows the right numbers even
+// when they weren't passed in cleanly. But doc-render.js only computes that
+// fallback for its own rendering -- it never hands the number back -- so the
+// sheet was being written with blank Subtotal Price/Total on every Hermes-
+// generated order. Mirrors doc-render.js's exact fallback formula so the sheet
+// gets the same numbers the PDF shows, instead of blanks.
+function effectiveSubtotalAndTotal(p) {
+  const items = p.line_items || [];
+  const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(/[$,()\s]/g, '')); return isNaN(n) ? 0 : n; };
+  const artSigned = (v) => {
+    const s = String(v == null ? '' : v).trim();
+    const magnitude = num(s);
+    return (s.startsWith('-') || s.startsWith('(')) ? -Math.abs(magnitude) : magnitude;
+  };
+  const calcSubtotal = items.reduce((s, i) => s + (parseFloat(String(i.amount).replace(/[$,]/g, '')) || (Number(i.quantity) * Number(i.price)) || 0), 0);
+  const subtotal = p.subtotal && Number(p.subtotal) > 0 ? Number(p.subtotal) : calcSubtotal;
+  const embForTotal = p.strike_embroidery ? 0 : num(p.embroidery);
+  const artForTotal = p.strike_art ? 0 : artSigned(p.art_setup);
+  const shipForTotal = p.strike_shipping ? 0 : num(p.shipping);
+  const reimbForTotal = num(p.sample_reimbursement);
+  const customForTotal = num(p.custom_label);
+  const total = p.total && Number(p.total) > 0
+    ? Number(p.total)
+    : subtotal + shipForTotal + customForTotal + embForTotal + artForTotal - reimbForTotal;
+  return { subtotal, total };
+}
+
 function buildDetailRow(p, driveLink) {
   const items = p.line_items || [];
   const get = (i, key) => (items[i] ? (items[i][key] || '') : '');
   const subtotalQty = p.subtotal_quantity != null ? p.subtotal_quantity : items.reduce((s, li) => s + (Number(li.quantity) || 0), 0);
+  const { subtotal: effSubtotal, total: effTotal } = effectiveSubtotalAndTotal(p);
   return [
     p.deal_id || '', p.deal_name || '', p.deal_stage || '', p.tracking_number || '',
     p.customer_email || '', p.order_number || '', p.product_page || '',
@@ -70,10 +99,10 @@ function buildDetailRow(p, driveLink) {
     get(3, 'url'), get(3, 'description'), get(3, 'sizes'),
     get(4, 'url'), get(4, 'description'), get(4, 'sizes'),
     get(3, 'quantity'), get(3, 'price'), get(4, 'quantity'), get(4, 'price'),
-    subtotalQty || '', p.subtotal || '',
+    subtotalQty || '', effSubtotal || '',
     p.embroidery || '',
     (p.art_setup != null ? parseFloat(String(p.art_setup).replace(/[$,\s]/g, '')) || '' : ''),
-    p.sample_reimbursement || '', p.custom_label || '', p.shipping || '', p.total || '',
+    p.sample_reimbursement || '', p.custom_label || '', p.shipping || '', effTotal || '',
     p.payment_link || '', p.payment_link_2 || '',
     p.strike_embroidery ? '1' : '', p.strike_art ? '1' : '', p.strike_shipping ? '1' : '',
     get(0, 'orig_price') || '', get(1, 'orig_price') || '', get(2, 'orig_price') || '', get(3, 'orig_price') || '', get(4, 'orig_price') || '',
