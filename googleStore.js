@@ -81,6 +81,35 @@ function buildDetailRow(p, driveLink) {
   ];
 }
 
+// Pre-registers a customer in the Users sheet (A=email, B=passwordHash, C=club)
+// the moment their order is created, so they can log into the portal (via
+// "create account", which just sets a password on this row) without needing
+// someone to notice and backfill it by hand later. Mirrors mayor-invoice's own
+// upsertUserEmail (index.js) -- that one only runs for orders generated through
+// mayor-invoice's manual /generate endpoint, not the automated Hermes/HubSpot path.
+async function upsertUserEmail(sheets, email, club) {
+  if (!email) return;
+  try {
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Users!A:C' });
+    const rows = res.data.values || [];
+    const idx = rows.findIndex((r) => r[0] && r[0].toLowerCase() === email.toLowerCase());
+    if (idx === -1) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SHEET_ID, range: 'Users!A:C', valueInputOption: 'USER_ENTERED',
+        resource: { values: [[email, '', club || ''].map(sheetSafe)] },
+      });
+    } else if (!rows[idx][2] && club) {
+      // Existing user row but missing club — fill it in
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID, range: `Users!C${idx + 1}`,
+        valueInputOption: 'USER_ENTERED', resource: { values: [[club]] },
+      });
+    }
+  } catch (e) {
+    console.error('upsertUserEmail failed:', e.message);
+  }
+}
+
 // Upsert keyed on order_number in column A (skip header row 1). Returns 1-based row.
 async function writeRow(sheets, tab, orderNumber, rowData) {
   // Order Info keys on column A; Order Confirmations/Invoices key on F (Order
@@ -151,6 +180,10 @@ async function persistOrder({ payload, docType, pdfBuffer }) {
     if (infoIdx < 1) {
       await writeRow(sheets, 'Order Info', orderNumber,
         [orderNumber, payload.club || '', payload.ship_date || '', payload.customer_email || '', status, '', '', ''].map(sheetSafe));
+      // customer_email can be a comma/semicolon list (see portal.js emailInList) --
+      // pre-register each address so every recipient can log in, not just the first.
+      const emails = String(payload.customer_email || '').split(/[,;]+/).map((e) => e.trim()).filter(Boolean);
+      for (const email of emails) await upsertUserEmail(sheets, email, payload.club);
     } else if (docType === 'invoice') {
       // Advance status to Awaiting Payment when the invoice is generated.
       await sheets.spreadsheets.values.update({
