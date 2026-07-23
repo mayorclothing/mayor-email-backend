@@ -28,6 +28,16 @@ function credsPresent() {
   return !!SHEET_CREDS.client_email;
 }
 
+// Order status is monotonic — automated writes (invoice regen, tracking, delivered,
+// paid, and the hourly poll) must only move it FORWARD. Without this, regenerating
+// an invoice for an already-paid/delivered order silently resets it to Awaiting
+// Payment. Rank blank/unknown as 0 so a first write always lands.
+const STATUS_RANK = {
+  'awaiting approval': 1, 'awaiting payment': 2, 'pending': 3, 'paid': 3,
+  'in transit': 4, 'shipped': 4, 'delivered': 5,
+};
+const statusRank = (s) => STATUS_RANK[String(s || '').trim().toLowerCase()] || 0;
+
 function getClients() {
   // Service accounts have no Drive storage quota, so acting as the SA's own
   // identity can't create files ("Service Accounts do not have storage quota").
@@ -203,9 +213,10 @@ async function persistOrder({ payload, docType, pdfBuffer }) {
     const { fileId, pdfUrl } = await uploadPdfToDrive(drive, orderNumber, docType, pdfBuffer);
 
     // Order Info: the row the portal lists. New order => seed it; keep status current.
-    const infoRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Order Info!A:A' });
-    const infoOrders = (infoRes.data.values || []).map((r) => String(r[0] || ''));
-    const infoIdx = infoOrders.findIndex((o, i) => i > 0 && o === String(orderNumber));
+    // Read A:E so we know the current status and never move it backward (F3).
+    const infoRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Order Info!A:E' });
+    const infoRows = infoRes.data.values || [];
+    const infoIdx = infoRows.findIndex((r, i) => i > 0 && String(r[0] || '') === String(orderNumber));
     if (infoIdx < 1) {
       await writeRow(sheets, 'Order Info', orderNumber,
         [orderNumber, payload.club || '', payload.ship_date || '', payload.customer_email || '', status, '', '', ''].map(sheetSafe));
@@ -213,8 +224,9 @@ async function persistOrder({ payload, docType, pdfBuffer }) {
       // pre-register each address so every recipient can log in, not just the first.
       const emails = String(payload.customer_email || '').split(/[,;]+/).map((e) => e.trim()).filter(Boolean);
       for (const email of emails) await upsertUserEmail(sheets, email, payload.club);
-    } else if (docType === 'invoice') {
-      // Advance status to Awaiting Payment when the invoice is generated.
+    } else if (docType === 'invoice' && statusRank(status) > statusRank(infoRows[infoIdx][4])) {
+      // Advance to Awaiting Payment only if the order isn't already further along
+      // (paid/in transit/delivered) — regenerating an invoice must not regress it.
       await sheets.spreadsheets.values.update({
         spreadsheetId: SHEET_ID, range: `Order Info!E${infoIdx + 1}`,
         valueInputOption: 'USER_ENTERED', resource: { values: [[status]] },
@@ -239,15 +251,19 @@ async function setOrderStatus({ orderNumber, status, tracking, deliveredDate }) 
   if (!credsPresent()) return { updated: false, status, skipped: 'no google credentials' };
   try {
     const { sheets } = getClients();
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Order Info!A:A' });
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Order Info!A:E' });
     const col = res.data.values || [];
     const idx = col.findIndex((r, i) => i > 0 && String(r[0]) === String(orderNumber));
     if (idx < 1) return { updated: false, status, skipped: 'order not found' };
     const row = idx + 1;
 
-    const data = [{ range: `Order Info!E${row}`, values: [[sheetSafe(status)]] }];
+    // Status is monotonic — only write E if it moves forward (F3). Tracking number
+    // and delivered date are data, not status, so they always write.
+    const data = [];
+    if (statusRank(status) > statusRank(col[idx][4])) data.push({ range: `Order Info!E${row}`, values: [[sheetSafe(status)]] });
     if (tracking != null && tracking !== '') data.push({ range: `Order Info!F${row}`, values: [[sheetSafe(tracking)]] });
     if (deliveredDate != null && deliveredDate !== '') data.push({ range: `Order Info!G${row}`, values: [[sheetSafe(deliveredDate)]] });
+    if (data.length === 0) return { updated: false, status, skipped: 'no forward change' };
 
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,

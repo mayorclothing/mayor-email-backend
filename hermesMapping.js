@@ -73,14 +73,19 @@ function dealToRenderPayload(deal, docType) {
   // Payment links: one field, one or two links separated by " / " => 50/50 labeling.
   const links = String(p.y_payment_link || '').split(' / ').map((s) => s.trim()).filter(Boolean);
 
-  // Strike/waive logic driven by the "Strike" field (HubSpot property `unstrike`,
-  // whose display label is "Strike"; free text). DIRECT semantics: listing an
-  // item strikes it — shown with a line through it and excluded from the total.
-  // Empty => nothing struck (everything charged). Substring match so any phrasing
-  // works: "Embroidery and Art Setup", "Embroidery, Art Setup, and Shipping", etc.
+  // Strike/waive logic. Standing Mayor convention: Embroidery + Art Setup are
+  // ALWAYS waived (struck) — the customer total is subtotal + shipping, fees
+  // comped. Shipping is charged by default and waived only when the "Strike"
+  // field (HubSpot property `unstrike`, display label "Strike") lists it.
+  // Empty field => emb/art waived, shipping charged — the historical default,
+  // and the exact meaning portal.js parseSheetRow gives a blank strike cell
+  // (blank => waived for emb/art, charged for shipping), so writer and reader
+  // agree including on legacy rows.
+  // ponytail: no path to CHARGE emb/art — none has ever been needed. If that
+  // changes, add an explicit token to the field and branch on it here.
   const strikeStr = String(p.unstrike || '').toLowerCase();
-  const strikeEmb = /embroidery/.test(strikeStr);
-  const strikeArt = /art setup/.test(strikeStr);
+  const strikeEmb = true;
+  const strikeArt = true;
   const strikeShip = /shipping/.test(strikeStr);
 
   const emb = n(p.za_embroidery);

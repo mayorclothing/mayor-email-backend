@@ -63,7 +63,7 @@ assert.strictEqual(p.line_items[1].sizes, '');
 // In Hand Date (zf_delivered_date) formatted like ship date
 assert.strictEqual(p.in_hand_date, 'Saturday, July 25, 2026');
 
-// Fees + cross-outs — direct strike: "Embroidery, Art Setup" waives both, not shipping
+// Fees + cross-outs — emb/art always waived; shipping charged unless Strike lists it.
 assert.strictEqual(p.embroidery, 150);
 assert.strictEqual(p.strike_embroidery, true);
 assert.strictEqual(p.art_setup, -40);
@@ -92,24 +92,22 @@ assert.strictEqual(dealToRenderPayload(deal, 'order_confirmation').type, 'confir
 // Empty deal => empty-but-valid payload, no throw
 const empty = dealToRenderPayload({ properties: {} }, 'invoice');
 assert.strictEqual(empty.line_items.length, 0);
-// Direct strike, empty "Strike" field => nothing struck (everything charged).
-assert.strictEqual(empty.strike_embroidery, false);
-assert.strictEqual(empty.strike_art, false);
+// Empty "Strike" field => emb/art waived (default), shipping charged.
+assert.strictEqual(empty.strike_embroidery, true);
+assert.strictEqual(empty.strike_art, true);
 assert.strictEqual(empty.strike_shipping, false);
-// Listing an item strikes it. "Embroidery; Shipping" -> emb + shipping struck, art not.
-const uns = dealToRenderPayload({ properties: { unstrike: 'Embroidery; Shipping' } }, 'invoice');
+// Listing "shipping" waives shipping; emb/art stay waived regardless.
+const uns = dealToRenderPayload({ properties: { unstrike: 'Shipping' } }, 'invoice');
 assert.strictEqual(uns.strike_embroidery, true);
-assert.strictEqual(uns.strike_art, false);
+assert.strictEqual(uns.strike_art, true);
 assert.strictEqual(uns.strike_shipping, true);
-// Robust to "and" / no separators: "Embroidery and Art Setup" strikes both.
+// "Embroidery and Art Setup" (no shipping) => emb/art waived, shipping charged.
 const andForm = dealToRenderPayload({ properties: { unstrike: 'Embroidery and Art Setup' } }, 'invoice');
 assert.strictEqual(andForm.strike_embroidery, true);
 assert.strictEqual(andForm.strike_art, true);
 assert.strictEqual(andForm.strike_shipping, false);
-// Oxford-comma + "and Shipping" all struck.
+// Oxford-comma + "and Shipping" => shipping also waived.
 const allForm = dealToRenderPayload({ properties: { unstrike: 'Embroidery, Art Setup, and Shipping' } }, 'invoice');
-assert.strictEqual(allForm.strike_embroidery, true);
-assert.strictEqual(allForm.strike_art, true);
 assert.strictEqual(allForm.strike_shipping, true);
 
 // Property list covers all 5 slots of qty + price
