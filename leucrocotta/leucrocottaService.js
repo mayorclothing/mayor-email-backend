@@ -16,40 +16,75 @@ async function handleNickelPaid(msg) {
   const { orderNumber } = parseNickelPaid(msg);
   if (!orderNumber) return { action: 'nickel_paid', skipped: 'no order number parsed' };
   const res = await markPaid(orderNumber);
+  // If the order isn't in the sheet, the payment can't be tied to anything —
+  // leave the email UNREAD so it isn't silently lost (a human reconciles). Any
+  // other outcome (marked paid, or already past Pending) is handled: mark read.
+  if (res.skipped === 'order not found') {
+    return { action: 'nickel_paid', orderNumber, statusUpdated: false, skipped: 'order not found — left unread' };
+  }
   await gmail.markRead(msg.id);
-  return { action: 'nickel_paid', orderNumber, statusUpdated: res.updated };
+  return { action: 'nickel_paid', orderNumber, statusUpdated: !!res.updated };
 }
 
-async function handleCustomerMessage(msg) {
-  if (!drafter.enabled()) return { action: 'customer_message', skipped: 'no ANTHROPIC_API_KEY' };
+// Pure planner (no I/O) — the fix for "6 drafts on one thread". Classifies each
+// unread message, routes Nickel-paid per-message, and collapses customer
+// messages to ONE draft per THREAD (drafting from the latest message, marking
+// every unread message in that thread read). Exported for adversarial tests.
+function planInboxActions(messages, { nickelSender = '', selfAddresses = [] } = {}) {
+  const nickelPaid = [];
+  const threads = new Map(); // threadId -> { latestMsg, unreadIds: [] }
+  let ignored = 0;
+  for (const msg of messages) {
+    const kind = classifyEmail(msg, { nickelSender, selfAddresses });
+    if (kind === 'nickel_paid') { nickelPaid.push(msg); continue; }
+    if (kind !== 'customer_message') { ignored += 1; continue; }
+    const t = threads.get(msg.threadId) || { latestMsg: null, unreadIds: [] };
+    t.unreadIds.push(msg.id);
+    if (!t.latestMsg || (msg.internalDate || 0) >= (t.latestMsg.internalDate || 0)) t.latestMsg = msg;
+    threads.set(msg.threadId, t);
+  }
+  const draftThreads = [...threads.entries()].map(([threadId, t]) => ({ threadId, latestMsg: t.latestMsg, unreadIds: t.unreadIds }));
+  return { nickelPaid, draftThreads, ignored };
+}
 
-  const customerEmail = extractAddress(msg.from);
-  const [threadText, voice, knowledge, contactMemory] = await Promise.all([
-    gmail.getThreadText(msg.threadId),
+// Draft ONE reply for a whole thread. Skips (but marks read) if the thread
+// already holds a draft — ours from a prior poll or one Matt is composing — so
+// we never stack drafts on a conversation.
+async function handleCustomerThread({ threadId, latestMsg, unreadIds }) {
+  if (!drafter.enabled()) return { action: 'customer_message', threadId, skipped: 'no ANTHROPIC_API_KEY' };
+
+  const { text: threadText, hasDraft } = await gmail.getThread(threadId);
+  if (hasDraft) {
+    for (const id of unreadIds) await gmail.markRead(id);
+    return { action: 'customer_message', threadId, skipped: 'thread already has a draft' };
+  }
+
+  const customerEmail = extractAddress(latestMsg.from);
+  const [voice, knowledge, contactMemory] = await Promise.all([
     memory.readVoice(),
     memory.readKnowledge(),
     memory.readContactMemory(customerEmail),
   ]);
 
-  const body = await drafter.draftReply({ threadText: threadText || msg.text, voice, knowledge, contactMemory, customerEmail });
-  if (!body) return { action: 'customer_message', skipped: 'empty draft' };
+  const body = await drafter.draftReply({ threadText: threadText || latestMsg.text, voice, knowledge, contactMemory, customerEmail });
+  if (!body) return { action: 'customer_message', threadId, skipped: 'empty draft' };
 
-  const subject = /^re:/i.test(msg.subject) ? msg.subject : `Re: ${msg.subject}`;
-  await gmail.createDraft({ threadId: msg.threadId, to: customerEmail, subject, body });
-  await gmail.markRead(msg.id); // dedup: don't re-draft next poll
+  const subject = /^re:/i.test(latestMsg.subject) ? latestMsg.subject : `Re: ${latestMsg.subject}`;
+  await gmail.createDraft({ threadId, to: customerEmail, subject, body });
+  // Mark EVERY unread message in the thread read — not just one — so a sibling
+  // message doesn't trigger another draft on the next poll.
+  for (const id of unreadIds) await gmail.markRead(id);
 
-  // Accrue memory (append a dated line; keep it short).
-  const note = `\n- ${new Date().toISOString().slice(0, 10)}: replied re "${msg.subject}"`;
+  const note = `\n- ${new Date().toISOString().slice(0, 10)}: replied re "${latestMsg.subject}"`;
   await memory.writeContactMemory(customerEmail, (contactMemory || `# ${customerEmail}\n`) + note);
 
-  // Record the draft so the learning loop can later compare it to what Matt sent.
   try {
     const log = await memory.readDraftLog();
-    log.push({ threadId: msg.threadId, customerEmail, subject, draftBody: body, createdMs: Date.now(), reconciled: false });
+    log.push({ threadId, customerEmail, subject, draftBody: body, createdMs: Date.now(), reconciled: false });
     await memory.writeDraftLog(log);
   } catch (e) { console.error('draft-log write failed:', e.message); }
 
-  return { action: 'customer_message', customerEmail, drafted: true };
+  return { action: 'customer_message', threadId, customerEmail, drafted: true };
 }
 
 
@@ -94,29 +129,45 @@ async function reconcileDrafts() {
   return { reconciled: count };
 }
 
+// Single-flight guard: Gmail push can fire several times in quick succession,
+// and two concurrent polls would each process the same unread mail and double-
+// draft. Only one poll runs at a time; overlapping triggers are dropped (the
+// next real change re-fires anyway).
+let polling = false;
+
 async function runInboxPoll() {
   if (!gmail.enabled()) return { skipped: 'gmail not configured', results: [] };
+  if (polling) return { skipped: 'poll already in progress', results: [] };
+  polling = true;
+  try {
+    const selfAddresses = [gmail.GMAIL_USER, config.resend.fromEmail].filter(Boolean);
+    const refs = await gmail.listUnreadInbound();
 
-  const selfAddresses = [gmail.GMAIL_USER, config.resend.fromEmail].filter(Boolean);
-  const refs = await gmail.listUnreadInbound();
-  const results = [];
-
-  for (const ref of refs) {
-    try {
-      const msg = await gmail.getMessage(ref.id);
-      const kind = classifyEmail(msg, { nickelSender: NICKEL_SENDER, selfAddresses });
-      if (kind === 'nickel_paid') results.push(await handleNickelPaid(msg));
-      else if (kind === 'customer_message') results.push(await handleCustomerMessage(msg));
-      // 'ignore' => leave unread, no action
-    } catch (e) {
-      console.error('Leucrocotta message failed:', e.message);
-      results.push({ action: 'error', error: e.message });
+    const messages = [];
+    for (const ref of refs) {
+      try { messages.push(await gmail.getMessage(ref.id)); }
+      catch (e) { console.error('Leucrocotta getMessage failed:', e.message); }
     }
-  }
-  let reconciled = 0;
-  try { reconciled = (await reconcileDrafts()).reconciled; } catch (e) { console.error('reconcile pass failed:', e.message); }
 
-  return { skipped: null, results, reconciled };
+    const { nickelPaid, draftThreads } = planInboxActions(messages, { nickelSender: NICKEL_SENDER, selfAddresses });
+    const results = [];
+
+    for (const msg of nickelPaid) {
+      try { results.push(await handleNickelPaid(msg)); }
+      catch (e) { console.error('Leucrocotta nickel failed:', e.message); results.push({ action: 'error', error: e.message }); }
+    }
+    for (const t of draftThreads) {
+      try { results.push(await handleCustomerThread(t)); }
+      catch (e) { console.error('Leucrocotta draft failed:', e.message); results.push({ action: 'error', error: e.message }); }
+    }
+
+    let reconciled = 0;
+    try { reconciled = (await reconcileDrafts()).reconciled; } catch (e) { console.error('reconcile pass failed:', e.message); }
+
+    return { skipped: null, results, reconciled };
+  } finally {
+    polling = false;
+  }
 }
 
-module.exports = { runInboxPoll, handleNickelPaid, handleCustomerMessage, reconcileDrafts };
+module.exports = { runInboxPoll, planInboxActions, handleNickelPaid, handleCustomerThread, reconcileDrafts };

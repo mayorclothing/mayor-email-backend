@@ -21,12 +21,17 @@ Do not invent facts. If something is not in the facts below, in the thread, or f
 async function draftReply({ threadText = '', voice = '', knowledge = '', contactMemory = '', customerEmail = '' }) {
   const client = new Anthropic(); // resolves ANTHROPIC_API_KEY from env
 
-  const system = [
+  // Prompt caching: the base instructions + Mayor facts + voice are identical
+  // across every draft in a poll batch, so cache that prefix (one breakpoint);
+  // only the per-contact memory below it varies. Well under the cache minimum
+  // just no-ops — harmless. Cuts repeated input-token cost on the drafter.
+  const stableSystem = [
     SYSTEM_BASE,
     knowledge ? `\n--- MAYOR FACTS & POLICIES (use these to answer directly) ---\n${knowledge}` : '',
     voice ? `\n--- MAYOR VOICE & STYLE ---\n${voice}` : '',
-    contactMemory ? `\n--- WHAT WE KNOW ABOUT ${customerEmail} ---\n${contactMemory}` : '',
   ].join('');
+  const system = [{ type: 'text', text: stableSystem, cache_control: { type: 'ephemeral' } }];
+  if (contactMemory) system.push({ type: 'text', text: `\n--- WHAT WE KNOW ABOUT ${customerEmail} ---\n${contactMemory}` });
 
   const response = await client.messages.create({
     model: MODEL,

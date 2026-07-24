@@ -2,6 +2,7 @@
 const assert = require('assert');
 const { parseNickelPaid } = require('./nickelParser');
 const { classifyEmail } = require('./emailClassifier');
+const { planInboxActions } = require('./leucrocottaService');
 
 // --- nickelParser ---
 // Bodies below mirror what gmailClient produces: HTML stripped to one
@@ -74,5 +75,46 @@ assert.strictEqual(
 assert.strictEqual(
   classifyEmail({ from: 'no-reply@shipping.com', subject: 'Shipped', text: 'tracking' }, opts),
   'ignore');
+
+// --- planInboxActions (the multi-draft fix + adversarial cases) ---
+const planOpts = { nickelSender: 'support@nickel.com', selfAddresses: ['mayor@mayorclothing.com'] };
+
+// THE BUG: 5 people on one thread (5 unread messages, same threadId) must
+// produce exactly ONE draft, not six — and mark all five read.
+const thread = 'T1';
+const fivePeople = [1, 2, 3, 4, 5].map((n) => ({
+  id: `m${n}`, threadId: thread, internalDate: 1000 + n,
+  from: `Person ${n} <p${n}@club.com>`, subject: 'Group order', text: `note ${n}`,
+}));
+let plan = planInboxActions(fivePeople, planOpts);
+assert.strictEqual(plan.draftThreads.length, 1, 'one thread => one draft, not per-message');
+assert.strictEqual(plan.draftThreads[0].unreadIds.length, 5, 'all five messages marked read');
+assert.strictEqual(plan.draftThreads[0].latestMsg.id, 'm5', 'drafts from the newest message (max internalDate)');
+
+// Two distinct threads => one draft each.
+plan = planInboxActions([
+  { id: 'a', threadId: 'TA', internalDate: 1, from: 'x@club.com', subject: 's', text: 't' },
+  { id: 'b', threadId: 'TB', internalDate: 1, from: 'y@club.com', subject: 's', text: 't' },
+], planOpts);
+assert.strictEqual(plan.draftThreads.length, 2);
+
+// Mixed batch: a Nickel paid + 2 customer msgs (same thread) + self + no-reply.
+plan = planInboxActions([
+  { id: 'n', threadId: 'TN', internalDate: 9, from: 'Nickel <support@nickel.com>',
+    subject: 'Processed Card Payment of $10.00 for 8901 from X', text: 'Payment received card payment of $10.00 for 8901 from X' },
+  { id: 'c1', threadId: 'TC', internalDate: 5, from: 'dave@club.com', subject: 'Reorder', text: 'more?' },
+  { id: 'c2', threadId: 'TC', internalDate: 7, from: 'sam@club.com', subject: 'Re: Reorder', text: 'agreed' },
+  { id: 's', threadId: 'TS', internalDate: 3, from: 'mayor@mayorclothing.com', subject: 'x', text: 'y' },
+  { id: 'nr', threadId: 'TR', internalDate: 4, from: 'no-reply@ups.com', subject: 'Shipped', text: 'tracking' },
+], planOpts);
+assert.strictEqual(plan.nickelPaid.length, 1, 'nickel routed per-message, not threaded');
+assert.strictEqual(plan.draftThreads.length, 1, 'the two customer msgs collapse to one thread');
+assert.strictEqual(plan.draftThreads[0].unreadIds.length, 2);
+assert.strictEqual(plan.draftThreads[0].latestMsg.id, 'c2');
+assert.strictEqual(plan.ignored, 2, 'self + no-reply ignored');
+
+// Empty inbox => nothing to do, no throw.
+plan = planInboxActions([], planOpts);
+assert.deepStrictEqual([plan.nickelPaid.length, plan.draftThreads.length, plan.ignored], [0, 0, 0]);
 
 console.log('leucrocotta.test.js: all assertions passed');

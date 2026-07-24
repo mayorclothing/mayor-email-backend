@@ -1,7 +1,7 @@
 // Hermes core: generate a document from a HubSpot deal, and the status
 // transitions. Shared by the HTTP route, the webhook fast-path, and the poll.
 
-const { getInvoiceDeal, searchDeals } = require('./hubspot');
+const { getInvoiceDeal, searchDeals, clearDealTrigger } = require('./hubspot');
 const { dealToRenderPayload, INVOICE_PROPERTIES } = require('./hermesMapping');
 const { renderInvoicePdf } = require('./doc-render');
 const { persistOrder, setOrderStatus } = require('./googleStore');
@@ -43,6 +43,15 @@ async function generateDocument({ dealId, docType, idempotencyKey }) {
   const pdf = await renderInvoicePdf(payload);
   const persist = await persistOrder({ payload, docType, pdfBuffer: pdf });
   seenKeys.add(key);
+
+  // Clear the trigger checkbox now that this doc exists, so the hourly poll
+  // stops re-generating it every run (best-effort: needs deals-write scope on
+  // the private app; a failure just leaves the old, slower behavior).
+  if (persist.persisted && dealId) {
+    const trigger = docType === 'invoice' ? TRIGGER.invoice : TRIGGER.oc;
+    try { await clearDealTrigger(dealId, trigger); }
+    catch (e) { console.error(`clearDealTrigger ${trigger} for deal ${dealId} failed:`, e.message); }
+  }
 
   return {
     ok: true,

@@ -79,6 +79,18 @@ async function logNoteOnContact(contactId, body) {
   });
 }
 
+// Reset a boolean trigger checkbox to false once we've acted on it, so the
+// hourly poll stops reprocessing the same deal every run (that unbounded
+// re-generation is what timed the poll out — 15+ deals × a synchronous pdfkit
+// render blocks the event loop). Setting it false re-fires the webhook, but
+// classifyTriggerEvent only acts on `true`, so there's no loop.
+async function clearDealTrigger(dealId, propertyName) {
+  return hubspotFetch(`/crm/v3/objects/deals/${dealId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties: { [propertyName]: 'false' } }),
+  });
+}
+
 async function markDealFollowUpSent(dealId) {
   return hubspotFetch(`/crm/v3/objects/deals/${dealId}`, {
     method: 'PATCH',
@@ -111,6 +123,7 @@ async function getListMemberEmails(listId) {
 module.exports = {
   getDeal,
   getInvoiceDeal,
+  clearDealTrigger,
   searchDeals,
   getContact,
   getPrimaryContactId,

@@ -252,7 +252,10 @@ async function setOrderStatus({ orderNumber, status, tracking, deliveredDate }) 
     const { sheets } = getClients();
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Order Info!A:E' });
     const col = res.data.values || [];
-    const idx = col.findIndex((r, i) => i > 0 && String(r[0]) === String(orderNumber));
+    // Trim/collapse whitespace on both sides — a Nickel order ref (or a stray
+    // sheet cell) with extra spaces must still match its order row.
+    const norm = (v) => String(v || '').trim().replace(/\s+/g, ' ');
+    const idx = col.findIndex((r, i) => i > 0 && norm(r[0]) === norm(orderNumber));
     if (idx < 1) return { updated: false, status, skipped: 'order not found' };
     const row = idx + 1;
 

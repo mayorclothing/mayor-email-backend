@@ -59,11 +59,32 @@ async function getMessage(id) {
   return {
     id: m.id,
     threadId: m.threadId,
+    internalDate: Number(m.internalDate || 0),
     from: header(m.payload, 'From'),
     subject: header(m.payload, 'Subject'),
     text: extractBody(m.payload) || m.snippet || '',
     authResults: header(m.payload, 'Authentication-Results'),
   };
+}
+
+// Thread as plain text (for drafting context) plus whether it already contains a
+// DRAFT — Leucrocotta must never pile a second draft onto a thread it (or Matt)
+// already has an open draft in. One fetch serves both.
+async function getThread(threadId) {
+  const gmail = getGmail();
+  const res = await gmail.users.threads.get({ userId: GMAIL_USER, id: threadId, format: 'full' });
+  const messages = res.data.messages || [];
+  const hasDraft = messages.some((m) => (m.labelIds || []).includes('DRAFT'));
+  const recent = messages.slice(-MAX_MESSAGES);
+  const body = recent.map((m) => {
+    const from = header(m.payload, 'From');
+    const text = (extractBody(m.payload) || m.snippet || '').slice(0, MAX_BODY_CHARS);
+    return `From: ${from}\n${text}`;
+  }).join('\n\n---\n\n');
+  const text = messages.length > recent.length
+    ? `[...${messages.length - recent.length} earlier messages omitted...]\n\n${body}`
+    : body;
+  return { text, hasDraft };
 }
 
 // Fetch recent thread messages as plain text, oldest first (for context).
@@ -141,4 +162,4 @@ async function getSentReplyInThread(threadId, afterMs = 0) {
   return best;
 }
 
-module.exports = { enabled, listUnreadInbound, getMessage, getThreadText, createDraft, markRead, getSentReplyInThread, watch, GMAIL_USER };
+module.exports = { enabled, listUnreadInbound, getMessage, getThreadText, getThread, createDraft, markRead, getSentReplyInThread, watch, GMAIL_USER };
