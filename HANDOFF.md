@@ -4,9 +4,22 @@ Operational handoff covering **all three repos**. This same file lives in each r
 
 ---
 
+## ⚠️ CURRENT STATE (2026-07-24) — read this first; it supersedes stale details below
+
+- **Live MO sheet ID is `1FTVqNw9voQ6Bkk1US_nv_PVx50Uc1TWIGyxGUJNknnU`** (set via `MO_SHEET_ID` on Render). The old `152hyxQz…` id below is the **DEAD pre-reorg sheet** — never use it. Both services now hard-fail on startup if `MO_SHEET_ID` is unset rather than falling back to it.
+- **System is live and doing real work** — HubSpot, Google (Drive/Sheets/Gmail DWD), Claude, Resend all configured on Render. The "everything returns `skipped` by design / this is config-only, don't touch code" framing below is **obsolete**.
+- **Leucrocotta is push-driven**, not a 15-min cron: Gmail Pub/Sub → `POST /leucrocotta/gmail-webhook/:secret` → `runInboxPoll`. A `leucrocotta-watch-renew` cron re-registers the Gmail `watch()` every 6 days (it expires in ≤7). `/leucrocotta/poll` is a manual fallback.
+- **Order-doc sheet layout is 58 columns**, and the layout is now a **single source of truth in `mo-sheet.js`** (duplicated verbatim in both server repos, like `doc-render.js`) — the two writers + the portal reader all derive column positions from it. The "46-column layout, duplicated, leave as-is" note below is obsolete.
+- **Status ladder**: Awaiting Approval → Awaiting Payment → Pending (paid) → In Transit → Delivered, and status writes are now **monotonic** (never regress).
+- **Hermes poll is bounded**: `generateDocument` clears the `zc_trigger_oc`/`zd_trigger_invoice` checkbox after a successful generate, so the hourly poll only processes freshly-toggled deals (previously it re-generated every flagged deal every run and timed the cron out).
+- **Retired**: the social-drafting poll (now a Claude Project). Delete the orphaned `social-poll` Render cron if still provisioned.
+- Full change detail lives in the `project_mayor_agent.md` agent-memory file.
+
+---
+
 ## The system
 
-Order-lifecycle automation for Mayor Clothing. **HubSpot** is the system of record; a **Google Sheet** ("MO sheet", ID `152hyxQz87IwPYl2lgBCm6pKKSjYl1hoL-AuZu-wODbo`) + **Google Drive** hold order state and generated docs; **Resend/Gmail** send mail; **Claude** drafts replies; **Nickel** handles payments.
+Order-lifecycle automation for Mayor Clothing. **HubSpot** is the system of record; a **Google Sheet** ("MO sheet" — live id in the Current State box above; the `152hyxQz…` id here is the dead pre-reorg one) + **Google Drive** hold order state and generated docs; **Resend/Gmail** send mail; **Claude** drafts replies; **Nickel** handles payments.
 
 | Repo | Role | Hosted |
 |------|------|--------|

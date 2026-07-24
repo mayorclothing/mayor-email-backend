@@ -1,5 +1,14 @@
 # Mayor Agent — Project Status
 
+> **⚠️ 2026-07-24 — this doc has drifted; corrections that supersede the text below:**
+> - Live MO sheet id is `1FTVqNw9voQ6Bkk1US_nv_PVx50Uc1TWIGyxGUJNknnU` (`MO_SHEET_ID` on Render). The old `152hyxQz…` is the **dead** pre-reorg sheet; services now hard-fail if `MO_SHEET_ID` is unset.
+> - **Leucrocotta is Gmail-push-driven**, not a 15-min cron (`/leucrocotta/gmail-webhook/:secret`; a `watch-renew` cron renews the subscription every 6 days). `/leucrocotta/poll` is a manual fallback.
+> - Order-doc layout is **58 columns**, unified in **`mo-sheet.js`** (single source of truth, both repos) — the "46-column, duplicated, leave as-is" note is obsolete.
+> - **Hermes poll is bounded**: the OC/invoice trigger checkbox is cleared after a successful generate, so the hourly poll no longer re-generates every flagged deal (that was timing the cron out).
+> - Status writes are **monotonic** (never regress a paid/shipped order).
+> - The inbox agent drafts **one reply per thread** (was one per message → "6 drafts on a 5-cc'd thread") and leaves a Nickel payment for an unknown order **unread** instead of dropping it.
+> - Full detail: the `project_mayor_agent.md` agent-memory file.
+
 Order-lifecycle automation for Mayor Clothing. HubSpot is the system of record;
 a Google Sheet (the "MO sheet") + Google Drive hold order state and generated
 docs; Resend/Gmail send mail; Claude drafts replies. Three repos:
